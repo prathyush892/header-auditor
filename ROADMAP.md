@@ -23,18 +23,21 @@ docker-compose.yml   postgres, redis, api, worker, web — one command to run lo
 ```
 
 Rules that every step follows:
+
 - Tests only hit local mock servers (127.0.0.1); no real third-party targets.
 - No secrets in the repo; config via `.env` (an `.env.example` is committed).
 - CI must stay green; `main` only receives passing code.
 
 ## Milestone 1: Monorepo + TypeScript engine
-- [ ] 1. Restructure into a pnpm workspace: move the Python CLI to `cli-python/` (tests still pass), add root `package.json`, `pnpm-workspace.yaml`, TS config, ESLint + Prettier, update CI for both languages
+
+- [x] 1. Restructure into a pnpm workspace: move the Python CLI to `cli-python/` (tests still pass), add root `package.json`, `pnpm-workspace.yaml`, TS config, ESLint + Prettier, update CI for both languages
 - [ ] 2. `packages/core`: Headers type + HSTS, X-Content-Type-Options, Referrer-Policy checks ported to TypeScript with Vitest tests mirroring the Python ones
 - [ ] 3. `packages/core`: CSP parser + CSP and clickjacking checks, with tests
 - [ ] 4. `packages/core`: Permissions-Policy, COOP, info-disclosure, cookie checks + scoring/grade, at parity with the Python engine
 - [ ] 5. `packages/core`: `scanUrl()` fetcher (undici) with redirect handling, timeouts, scheme allow-list and SSRF guard (blocks private/loopback IPs unless `allowPrivate`); integration tests against a local mock server
 
 ## Milestone 2: New checks
+
 - [ ] 6. TLS check: protocol version, certificate expiry/issuer/hostname match, weak ciphers flag, with a local self-signed test server
 - [ ] 7. HTTP→HTTPS redirect check and mixed-content detection in the returned HTML
 - [ ] 8. DNS checks: CAA record, SPF and DMARC presence/strength (resolver injected so tests use fixtures)
@@ -42,6 +45,7 @@ Rules that every step follows:
 - [ ] 10. Subresource Integrity check for third-party `<script>`/`<link>` tags
 
 ## Milestone 3: API + database
+
 - [ ] 11. `packages/db`: Prisma schema (User, Site, Scan, Finding, AlertRule) + first migration; `docker-compose.yml` with Postgres and Redis
 - [ ] 12. `apps/api`: Fastify skeleton, health route, zod-validated config, structured logging, error handler, tests with an in-memory app instance
 - [ ] 13. Auth: email + password with argon2 hashing, httpOnly session cookies, CSRF protection, rate-limited login, with tests
@@ -51,6 +55,7 @@ Rules that every step follows:
 - [ ] 17. Domain-ownership verification (DNS TXT token) before scheduled scans are allowed
 
 ## Milestone 4: Dashboard
+
 - [ ] 18. `apps/web`: Next.js app shell, auth pages, typed API client
 - [ ] 19. Sites list + add-site flow with ownership verification instructions
 - [ ] 20. Scan report page: grade badge, findings grouped by severity, fix recommendations with copy-paste config snippets (nginx, Express/helmet, Next.js headers)
@@ -58,6 +63,7 @@ Rules that every step follows:
 - [ ] 22. Public shareable report link (opt-in, unguessable ID) + embeddable grade badge SVG
 
 ## Milestone 5: Alerts, hardening, ship it
+
 - [ ] 23. Alerts: email/webhook when grade drops or a cert expires within N days
 - [ ] 24. Self-audit: run the scanner against its own dashboard in CI and require grade A; add helmet/CSP to the API and web app
 - [ ] 25. Security tooling in CI: CodeQL, dependency audit, Dependabot, Docker image scan
