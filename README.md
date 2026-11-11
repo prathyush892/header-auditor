@@ -74,6 +74,7 @@ cli-python/
   tests/        # unit tests + end-to-end tests against a mock server on 127.0.0.1
 packages/
   core/         # TypeScript scan engine (port of the Python checks, in progress)
+spec/parity/    # shared test cases both engines must agree on (status, score, weight)
 apps/           # API, worker and dashboard (coming in later milestones)
 ```
 
