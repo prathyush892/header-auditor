@@ -1,9 +1,9 @@
 /**
  * @header-auditor/core — the TypeScript scan engine.
  *
- * This package is intentionally empty of checks for now: roadmap step 2 ports
- * the first Python checks here. It exists today so the workspace, type
- * checking, linting and tests are wired up end to end before real code lands.
+ * A pure (no network, no I/O) port of the Python checks. Each check takes a
+ * HeaderMap and returns a Finding; behaviour is pinned to the Python engine by
+ * the shared cases in spec/parity/checks.json.
  */
 
 /** Semantic version of the scan engine, reported alongside every scan result. */
@@ -13,3 +13,7 @@ export const ENGINE_VERSION = "0.0.0";
 export type EngineName = "header-auditor-core" | "header-auditor-python";
 
 export const ENGINE_NAME: EngineName = "header-auditor-core";
+
+export { makeFinding, Status, type Finding, type FindingInit } from "./finding.js";
+export { HeaderMap, type HeaderEntry, type HeaderInput } from "./headers.js";
+export * from "./checks/index.js";
