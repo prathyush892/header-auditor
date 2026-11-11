@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "check": "hsts",
+      "name": "missing",
+      "headers": [],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "not https",
+      "headers": [],
+      "expect": {
+        "status": "info",
+        "score": 0,
+        "weight": 0
+      },
+      "isHttps": false
+    },
+    {
+      "check": "hsts",
+      "name": "short max-age",
+      "headers": [["Strict-Transport-Security", "max-age=100"]],
+      "expect": {
+        "status": "warn",
+        "score": 10,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "one year without includeSubDomains",
+      "headers": [["Strict-Transport-Security", "max-age=31536000"]],
+      "expect": {
+        "status": "warn",
+        "score": 15,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "one year with includeSubDomains",
+      "headers": [["Strict-Transport-Security", "max-age=31536000; includeSubDomains"]],
+      "expect": {
+        "status": "pass",
+        "score": 20,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "exactly six months",
+      "headers": [["Strict-Transport-Security", "max-age=15768000; includeSubDomains"]],
+      "expect": {
+        "status": "pass",
+        "score": 20,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "one second under six months",
+      "headers": [["Strict-Transport-Security", "max-age=15767999; includeSubDomains"]],
+      "expect": {
+        "status": "warn",
+        "score": 10,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "quoted and spaced max-age, mixed case",
+      "headers": [
+        ["Strict-Transport-Security", "MAX-AGE = \"63072000\"; INCLUDESUBDOMAINS; preload"]
+      ],
+      "expect": {
+        "status": "pass",
+        "score": 20,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "huge max-age",
+      "headers": [
+        ["Strict-Transport-Security", "max-age=999999999999999999999999; includeSubDomains"]
+      ],
+      "expect": {
+        "status": "pass",
+        "score": 20,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "no max-age",
+      "headers": [["Strict-Transport-Security", "includeSubDomains"]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "negative max-age",
+      "headers": [["Strict-Transport-Security", "max-age=-1"]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "empty value",
+      "headers": [["Strict-Transport-Security", ""]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 20
+      }
+    },
+    {
+      "check": "hsts",
+      "name": "first of duplicate headers wins",
+      "headers": [
+        ["Strict-Transport-Security", "max-age=100"],
+        ["Strict-Transport-Security", "max-age=31536000; includeSubDomains"]
+      ],
+      "expect": {
+        "status": "warn",
+        "score": 10,
+        "weight": 20
+      }
+    },
+    {
+      "check": "content-type-options",
+      "name": "nosniff",
+      "headers": [["X-Content-Type-Options", "nosniff"]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      }
+    },
+    {
+      "check": "content-type-options",
+      "name": "nosniff any case, padded",
+      "headers": [["X-Content-Type-Options", "  NoSniff "]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      }
+    },
+    {
+      "check": "content-type-options",
+      "name": "missing",
+      "headers": [],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 10
+      }
+    },
+    {
+      "check": "content-type-options",
+      "name": "unexpected value",
+      "headers": [["X-Content-Type-Options", "sniff"]],
+      "expect": {
+        "status": "warn",
+        "score": 3,
+        "weight": 10
+      }
+    },
+    {
+      "check": "referrer-policy",
+      "name": "missing",
+      "headers": [],
+      "expect": {
+        "status": "warn",
+        "score": 5,
+        "weight": 10
+      }
+    },
+    {
+      "check": "referrer-policy",
+      "name": "safe fallback list uses last",
+      "headers": [["Referrer-Policy", "no-referrer, strict-origin-when-cross-origin"]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      }
+    },
+    {
+      "check": "referrer-policy",
+      "name": "last token is unsafe",
+      "headers": [["Referrer-Policy", "no-referrer, unsafe-url"]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 10
+      }
+    },
+    {
+      "check": "referrer-policy",
+      "name": "unsafe-url",
+      "headers": [["Referrer-Policy", "unsafe-url"]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 10
+      }
+    },
+    {
+      "check": "referrer-policy",
+      "name": "origin leaks less but not safe",
+      "headers": [["Referrer-Policy", "origin"]],
+      "expect": {
+        "status": "warn",
+        "score": 5,
+        "weight": 10
+      }
+    },
+    {
+      "check": "referrer-policy",
+      "name": "no-referrer-when-downgrade",
+      "headers": [["Referrer-Policy", "no-referrer-when-downgrade"]],
+      "expect": {
+        "status": "warn",
+        "score": 5,
+        "weight": 10
+      }
+    },
+    {
+      "check": "referrer-policy",
+      "name": "uppercase safe value",
+      "headers": [["Referrer-Policy", "SAME-ORIGIN"]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      }
+    },
+    {
+      "check": "referrer-policy",
+      "name": "only commas",
+      "headers": [["Referrer-Policy", ", ,"]],
+      "expect": {
+        "status": "warn",
+        "score": 5,
+        "weight": 10
+      }
+    }
+  ]
+}

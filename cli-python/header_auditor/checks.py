@@ -186,7 +186,11 @@ def check_referrer_policy(h: Headers) -> Finding:
     if not val:
         return Finding(name, WARN, "Header missing (browser default applies).", weight, 5,
                        f"Add `{name}: strict-origin-when-cross-origin`.")
-    last = [p.strip().lower() for p in val.split(",") if p.strip()][-1]
+    tokens = [p.strip().lower() for p in val.split(",") if p.strip()]
+    if not tokens:
+        return Finding(name, WARN, f"No policy token in '{val}' (browser default applies).", weight, 5,
+                       "Use strict-origin-when-cross-origin.")
+    last = tokens[-1]
     if last in SAFE_REFERRER:
         return Finding(name, PASS, f"{last}.", weight, weight)
     if last == "unsafe-url":
