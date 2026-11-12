@@ -32,7 +32,7 @@ Rules that every step follows:
 
 - [x] 1. Restructure into a pnpm workspace: move the Python CLI to `cli-python/` (tests still pass), add root `package.json`, `pnpm-workspace.yaml`, TS config, ESLint + Prettier, update CI for both languages
 - [x] 2. `packages/core`: Headers type + HSTS, X-Content-Type-Options, Referrer-Policy checks ported to TypeScript with Vitest tests mirroring the Python ones
-- [ ] 3. `packages/core`: CSP parser + CSP and clickjacking checks, with tests
+- [x] 3. `packages/core`: CSP parser + CSP and clickjacking checks, with tests
 - [ ] 4. `packages/core`: Permissions-Policy, COOP, info-disclosure, cookie checks + scoring/grade, at parity with the Python engine
 - [ ] 5. `packages/core`: `scanUrl()` fetcher (undici) with redirect handling, timeouts, scheme allow-list and SSRF guard (blocks private/loopback IPs unless `allowPrivate`); integration tests against a local mock server
 
