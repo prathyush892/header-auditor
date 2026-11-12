@@ -82,3 +82,23 @@ def test_report_scoring():
     r = Report("https://x", 200, run_all(strong, is_https=True))
     assert r.score == 100 and r.grade == "A"
     assert r.to_dict()["grade"] == "A"
+
+
+def test_parse_csp():
+    from header_auditor.checks import parse_csp
+    p = parse_csp("\tdefault-src\t'self'\n 'unsafe-inline'; ;FRAME-ANCESTORS; scr!pt-src *; default-src *")
+    assert p == {"default-src": ["'self'", "'unsafe-inline'"], "frame-ancestors": []}
+    assert parse_csp("Script-SRC 'Nonce-AbC'") == {"script-src": ["'Nonce-AbC'"]}
+    assert parse_csp("") == {}
+
+
+def test_csp_details_match_typescript():
+    assert check_csp(H(Content_Security_Policy="default-src 'none'; script-src https:")).detail == \
+        "script-src allows any origin (https:)."
+    assert check_csp(H(Content_Security_Policy="default-src 'self'")).detail == "object-src not restricted."
+    assert check_framing(H(Content_Security_Policy="frame-ancestors")).detail == \
+        "CSP frame-ancestors (empty, same as 'none')."
+    assert check_framing(H(Content_Security_Policy="frame-ancestors 'self'  https://a.test")).detail == \
+        "CSP frame-ancestors 'self' https://a.test."
+    assert check_framing(H(Content_Security_Policy="frame-ancestors 'self' *")).detail == \
+        "CSP frame-ancestors allows any origin (*)."

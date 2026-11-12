@@ -108,15 +108,66 @@ def check_hsts(h: Headers, is_https: bool = True) -> Finding:
     return Finding(name, PASS, detail + " with includeSubDomains.", weight, weight)
 
 
-def _csp_directives(csp: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for part in csp.split(";"):
-        part = part.strip()
-        if not part:
+# --- Content-Security-Policy parsing ------------------------------------------
+# Mirrors packages/core/src/csp.ts (CSP Level 3, "parse a serialized CSP"):
+# split on ";", strip ASCII whitespace, lowercase the directive name, ignore
+# invalid names and duplicates (first wins), split the value into source tokens.
+
+_ASCII_WS = re.compile(r"[\t\n\f\r ]+")
+_DIRECTIVE_NAME = re.compile(r"[a-z0-9-]+")
+_ANY_ORIGIN_SOURCE = re.compile(r"\*|https?:|https?://\*")
+_HASH_PREFIXES = ("'sha256-", "'sha384-", "'sha512-")
+
+
+def parse_csp(serialized: str) -> dict[str, list[str]]:
+    """Parse one serialized policy into {directive: [source tokens]}."""
+    policy: dict[str, list[str]] = {}
+    for raw in serialized.split(";"):
+        tokens = [t for t in _ASCII_WS.split(raw) if t]
+        if not tokens:
             continue
-        key, _, value = part.partition(" ")
-        out.setdefault(key.lower(), value.strip())
-    return out
+        name = tokens[0].lower()
+        if not _DIRECTIVE_NAME.fullmatch(name) or name in policy:
+            continue
+        policy[name] = tokens[1:]
+    return policy
+
+
+def _has_source(sources: list[str], keyword: str) -> bool:
+    return any(s.lower() == keyword.lower() for s in sources)
+
+
+def _has_source_prefix(sources: list[str], prefix: str) -> bool:
+    return any(s.lower().startswith(prefix.lower()) for s in sources)
+
+
+def _any_origin_source(sources: list[str]) -> str | None:
+    return next((s for s in sources if _ANY_ORIGIN_SOURCE.fullmatch(s.lower())), None)
+
+
+def _neutralizes_unsafe_inline(sources: list[str]) -> bool:
+    """Browsers ignore 'unsafe-inline' next to a nonce, hash or 'strict-dynamic'."""
+    return (_has_source_prefix(sources, "'nonce-")
+            or any(_has_source_prefix(sources, p) for p in _HASH_PREFIXES)
+            or _has_source(sources, "'strict-dynamic'"))
+
+
+def csp_problems(policy: dict[str, list[str]]) -> list[str]:
+    problems = []
+    script_src = policy.get("script-src", policy.get("default-src", []))
+    if _has_source(script_src, "'unsafe-inline'") and not _neutralizes_unsafe_inline(script_src):
+        problems.append("script-src allows 'unsafe-inline'")
+    if _has_source(script_src, "'unsafe-eval'"):
+        problems.append("script-src allows 'unsafe-eval'")
+    # With 'strict-dynamic', CSP3 browsers ignore host and scheme sources.
+    any_origin = None if _has_source(script_src, "'strict-dynamic'") else _any_origin_source(script_src)
+    if any_origin is not None:
+        problems.append(f"script-src allows any origin ({any_origin})")
+    if "default-src" not in policy and "script-src" not in policy:
+        problems.append("no default-src or script-src")
+    if "object-src" not in policy and not _has_source(policy.get("default-src", []), "'none'"):
+        problems.append("object-src not restricted")
+    return problems
 
 
 def check_csp(h: Headers) -> Finding:
@@ -128,19 +179,7 @@ def check_csp(h: Headers) -> Finding:
                            "Enforce the policy once reports are clean.")
         return Finding(name, FAIL, "Header missing.", weight, 0,
                        "Start with `default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'`.")
-    d = _csp_directives(val)
-    problems = []
-    script_src = d.get("script-src", d.get("default-src", ""))
-    if "'unsafe-inline'" in script_src and "'nonce-" not in script_src and "'strict-dynamic'" not in script_src:
-        problems.append("script-src allows 'unsafe-inline'")
-    if "'unsafe-eval'" in script_src:
-        problems.append("script-src allows 'unsafe-eval'")
-    if re.search(r"(^|\s)\*(\s|$)", script_src):
-        problems.append("script-src allows any origin (*)")
-    if "default-src" not in d and "script-src" not in d:
-        problems.append("no default-src or script-src")
-    if "object-src" not in d and "'none'" not in d.get("default-src", ""):
-        problems.append("object-src not restricted")
+    problems = csp_problems(parse_csp(val))
     if not problems:
         return Finding(name, PASS, "Policy present with no obvious weaknesses.", weight, weight)
     score = max(5, weight - 7 * len(problems))
@@ -150,14 +189,16 @@ def check_csp(h: Headers) -> Finding:
 
 def check_framing(h: Headers) -> Finding:
     name, weight = "Clickjacking protection", 15
-    csp = h.get("Content-Security-Policy") or ""
-    fa = _csp_directives(csp).get("frame-ancestors")
+    csp = h.get("Content-Security-Policy")
+    fa = parse_csp(csp).get("frame-ancestors") if csp is not None else None
     xfo = (h.get("X-Frame-Options") or "").upper()
     if fa is not None:
-        if fa.strip() == "*":
-            return Finding(name, FAIL, "CSP frame-ancestors allows any origin.", weight, 0,
+        any_origin = _any_origin_source(fa)
+        if any_origin is not None:
+            return Finding(name, FAIL, f"CSP frame-ancestors allows any origin ({any_origin}).", weight, 0,
                            "Use frame-ancestors 'self' or 'none'.")
-        return Finding(name, PASS, f"CSP frame-ancestors {fa}.", weight, weight)
+        shown = " ".join(fa) if fa else "(empty, same as 'none')"
+        return Finding(name, PASS, f"CSP frame-ancestors {shown}.", weight, weight)
     if xfo in ("DENY", "SAMEORIGIN"):
         return Finding(name, PASS, f"X-Frame-Options: {xfo}.", weight, weight)
     if xfo:
