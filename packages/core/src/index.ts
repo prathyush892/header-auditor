@@ -16,4 +16,13 @@ export const ENGINE_NAME: EngineName = "header-auditor-core";
 
 export { makeFinding, Status, type Finding, type FindingInit } from "./finding.js";
 export { HeaderMap, type HeaderEntry, type HeaderInput } from "./headers.js";
+export {
+  effectiveScriptSources,
+  findAnyOriginSource,
+  hasSource,
+  hasSourcePrefix,
+  neutralizesUnsafeInline,
+  parseCsp,
+  type CspPolicy,
+} from "./csp.js";
 export * from "./checks/index.js";

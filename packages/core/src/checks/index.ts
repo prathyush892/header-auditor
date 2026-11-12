@@ -13,3 +13,5 @@ export {
   REFERRER_POLICY_HEADER,
   SAFE_REFERRER_POLICIES,
 } from "./referrer-policy.js";
+export { checkCsp, cspProblems, CSP_HEADER, CSP_REPORT_ONLY_HEADER } from "./csp.js";
+export { checkFraming, FRAMING_CHECK, X_FRAME_OPTIONS_HEADER } from "./framing.js";
