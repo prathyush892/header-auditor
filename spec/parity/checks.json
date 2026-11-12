@@ -258,6 +258,326 @@
         "score": 5,
         "weight": 10
       }
+    },
+    {
+      "check": "csp",
+      "name": "missing",
+      "headers": [],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "empty value counts as missing",
+      "headers": [["Content-Security-Policy", ""]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "report-only only",
+      "headers": [["Content-Security-Policy-Report-Only", "default-src 'self'"]],
+      "expect": {
+        "status": "warn",
+        "score": 5,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "good policy",
+      "headers": [
+        ["Content-Security-Policy", "default-src 'self'; object-src 'none'; frame-ancestors 'none'"]
+      ],
+      "expect": {
+        "status": "pass",
+        "score": 25,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "wildcard, unsafe-inline and unsafe-eval (score floor)",
+      "headers": [["Content-Security-Policy", "script-src * 'unsafe-inline' 'unsafe-eval'"]],
+      "expect": {
+        "status": "warn",
+        "score": 5,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "nonce neutralizes unsafe-inline",
+      "headers": [
+        [
+          "Content-Security-Policy",
+          "default-src 'self'; script-src 'nonce-abc' 'unsafe-inline'; object-src 'none'"
+        ]
+      ],
+      "expect": {
+        "status": "pass",
+        "score": 25,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "hash neutralizes unsafe-inline",
+      "headers": [
+        [
+          "Content-Security-Policy",
+          "default-src 'self'; script-src 'sha256-abc=' 'unsafe-inline'; object-src 'none'"
+        ]
+      ],
+      "expect": {
+        "status": "pass",
+        "score": 25,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "keywords are case-insensitive",
+      "headers": [
+        [
+          "Content-Security-Policy",
+          "default-src 'self'; object-src 'none'; script-src 'self' 'UNSAFE-EVAL'"
+        ]
+      ],
+      "expect": {
+        "status": "warn",
+        "score": 18,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "tab separates name and value",
+      "headers": [["Content-Security-Policy", "default-src\t'none'"]],
+      "expect": {
+        "status": "pass",
+        "score": 25,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "bare https: scheme allows any origin",
+      "headers": [
+        [
+          "Content-Security-Policy",
+          "default-src 'self'; object-src 'none'; script-src 'self' https:"
+        ]
+      ],
+      "expect": {
+        "status": "warn",
+        "score": 18,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "strict-dynamic ignores scheme fallbacks",
+      "headers": [
+        [
+          "Content-Security-Policy",
+          "script-src 'strict-dynamic' 'nonce-r4nd0m' 'unsafe-inline' https:; object-src 'none'; base-uri 'none'"
+        ]
+      ],
+      "expect": {
+        "status": "pass",
+        "score": 25,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "no default-src or script-src",
+      "headers": [["Content-Security-Policy", "object-src 'none'"]],
+      "expect": {
+        "status": "warn",
+        "score": 18,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "default-src without object-src restriction",
+      "headers": [["Content-Security-Policy", "default-src 'self'"]],
+      "expect": {
+        "status": "warn",
+        "score": 18,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "duplicate directive: first wins",
+      "headers": [
+        [
+          "Content-Security-Policy",
+          "default-src 'self'; object-src 'none'; script-src 'self'; script-src 'unsafe-inline'"
+        ]
+      ],
+      "expect": {
+        "status": "pass",
+        "score": 25,
+        "weight": 25
+      }
+    },
+    {
+      "check": "csp",
+      "name": "invalid directive name ignored",
+      "headers": [
+        ["Content-Security-Policy", "default-src 'self'; object-src 'none'; scr!pt-src *"]
+      ],
+      "expect": {
+        "status": "pass",
+        "score": 25,
+        "weight": 25
+      }
+    },
+    {
+      "check": "framing",
+      "name": "missing",
+      "headers": [],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "X-Frame-Options DENY",
+      "headers": [["X-Frame-Options", "DENY"]],
+      "expect": {
+        "status": "pass",
+        "score": 15,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "X-Frame-Options lowercase sameorigin",
+      "headers": [["X-Frame-Options", "sameorigin"]],
+      "expect": {
+        "status": "pass",
+        "score": 15,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "X-Frame-Options ALLOW-FROM unsupported",
+      "headers": [["X-Frame-Options", "ALLOW-FROM https://a.test"]],
+      "expect": {
+        "status": "warn",
+        "score": 5,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "frame-ancestors 'self'",
+      "headers": [["Content-Security-Policy", "frame-ancestors 'self'"]],
+      "expect": {
+        "status": "pass",
+        "score": 15,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "frame-ancestors uppercase directive name",
+      "headers": [["Content-Security-Policy", "FRAME-ANCESTORS 'none'"]],
+      "expect": {
+        "status": "pass",
+        "score": 15,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "frame-ancestors *",
+      "headers": [["Content-Security-Policy", "frame-ancestors *"]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "frame-ancestors wildcard among other sources",
+      "headers": [["Content-Security-Policy", "frame-ancestors 'self' *"]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "frame-ancestors bare https: scheme",
+      "headers": [["Content-Security-Policy", "frame-ancestors https:"]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "frame-ancestors empty source list acts as 'none'",
+      "headers": [["Content-Security-Policy", "default-src 'self'; frame-ancestors"]],
+      "expect": {
+        "status": "pass",
+        "score": 15,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "frame-ancestors overrides X-Frame-Options",
+      "headers": [
+        ["Content-Security-Policy", "frame-ancestors *"],
+        ["X-Frame-Options", "DENY"]
+      ],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "CSP without frame-ancestors falls back to XFO",
+      "headers": [
+        ["Content-Security-Policy", "default-src 'self'"],
+        ["X-Frame-Options", "DENY"]
+      ],
+      "expect": {
+        "status": "pass",
+        "score": 15,
+        "weight": 15
+      }
+    },
+    {
+      "check": "framing",
+      "name": "report-only frame-ancestors is not enforced",
+      "headers": [["Content-Security-Policy-Report-Only", "frame-ancestors 'none'"]],
+      "expect": {
+        "status": "fail",
+        "score": 0,
+        "weight": 15
+      }
     }
   ]
 }

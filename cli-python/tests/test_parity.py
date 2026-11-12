@@ -12,6 +12,8 @@ import pytest
 from header_auditor.checks import (
     Headers,
     check_content_type_options,
+    check_csp,
+    check_framing,
     check_hsts,
     check_referrer_policy,
 )
@@ -22,6 +24,8 @@ CHECKS = {
     "hsts": lambda h, is_https: check_hsts(h, is_https),
     "content-type-options": lambda h, _: check_content_type_options(h),
     "referrer-policy": lambda h, _: check_referrer_policy(h),
+    "csp": lambda h, _: check_csp(h),
+    "framing": lambda h, _: check_framing(h),
 }
 
 

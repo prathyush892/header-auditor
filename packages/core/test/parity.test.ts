@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import spec from "../../../spec/parity/checks.json" with { type: "json" };
 import {
   checkContentTypeOptions,
+  checkCsp,
+  checkFraming,
   checkHsts,
   checkReferrerPolicy,
   HeaderMap,
@@ -19,6 +21,8 @@ const RUNNERS: Readonly<Record<string, CheckRunner>> = {
   hsts: (h, isHttps) => checkHsts(h, { isHttps }),
   "content-type-options": (h) => checkContentTypeOptions(h),
   "referrer-policy": (h) => checkReferrerPolicy(h),
+  csp: (h) => checkCsp(h),
+  framing: (h) => checkFraming(h),
 };
 
 interface ParityCase {
