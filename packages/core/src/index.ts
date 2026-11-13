@@ -26,3 +26,17 @@ export {
   type CspPolicy,
 } from "./csp.js";
 export * from "./checks/index.js";
+export {
+  buildReport,
+  GRADE_CUTOFFS,
+  gradeFor,
+  reportToJson,
+  roundHalfEven,
+  runAll,
+  scoreFindings,
+  type Grade,
+  type Report,
+  type ReportJson,
+  type RunOptions,
+  type Score,
+} from "./report.js";
