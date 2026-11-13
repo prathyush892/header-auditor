@@ -26,11 +26,11 @@ Score:  42/100  Grade: D
 | X-Content-Type-Options     | 10     | `nosniff`                                                                                     |
 | Referrer-Policy            | 10     | `no-referrer`, `same-origin`, `strict-origin(-when-cross-origin)`                             |
 | Permissions-Policy         | 10     | Present                                                                                       |
-| Cross-Origin-Opener-Policy | 5      | `same-origin`                                                                                 |
+| Cross-Origin-Opener-Policy | 5      | `same-origin` or `same-origin-allow-popups` (parameters such as `report-to` are ignored)      |
 | Information disclosure     | 5      | No version numbers in `Server` / `X-Powered-By` / ASP.NET headers                             |
 | Cookie flags               | 10     | Every `Set-Cookie` has `Secure` (HTTPS), `HttpOnly`, `SameSite`                               |
 
-Score = earned / available × 100. Grades: A ≥ 90, B ≥ 75, C ≥ 60, D ≥ 40, else F. Checks that don't apply (e.g. HSTS over plain HTTP, cookies when none are set) are excluded from the total.
+Score = earned / available × 100, rounded half to even (so 12.5 → 12 in both engines). Grades: A ≥ 90, B ≥ 75, C ≥ 60, D ≥ 40, else F. Checks that don't apply (e.g. HSTS over plain HTTP, cookies when none are set) are excluded from the total.
 
 ## Install
 

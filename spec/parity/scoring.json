@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "points": [
+    {
+      "name": "nothing graded",
+      "findings": [],
+      "expect": {
+        "score": 0,
+        "grade": "F"
+      }
+    },
+    {
+      "name": "only informational findings",
+      "findings": [
+        {
+          "score": 0,
+          "weight": 0
+        }
+      ],
+      "expect": {
+        "score": 0,
+        "grade": "F"
+      }
+    },
+    {
+      "name": "perfect",
+      "findings": [
+        {
+          "score": 20,
+          "weight": 20
+        },
+        {
+          "score": 80,
+          "weight": 80
+        }
+      ],
+      "expect": {
+        "score": 100,
+        "grade": "A"
+      }
+    },
+    {
+      "name": "exact A cutoff",
+      "findings": [
+        {
+          "score": 90,
+          "weight": 100
+        }
+      ],
+      "expect": {
+        "score": 90,
+        "grade": "A"
+      }
+    },
+    {
+      "name": "just under A",
+      "findings": [
+        {
+          "score": 89,
+          "weight": 100
+        }
+      ],
+      "expect": {
+        "score": 89,
+        "grade": "B"
+      }
+    },
+    {
+      "name": "B cutoff",
+      "findings": [
+        {
+          "score": 75,
+          "weight": 100
+        }
+      ],
+      "expect": {
+        "score": 75,
+        "grade": "B"
+      }
+    },
+    {
+      "name": "C cutoff",
+      "findings": [
+        {
+          "score": 60,
+          "weight": 100
+        }
+      ],
+      "expect": {
+        "score": 60,
+        "grade": "C"
+      }
+    },
+    {
+      "name": "D cutoff",
+      "findings": [
+        {
+          "score": 40,
+          "weight": 100
+        }
+      ],
+      "expect": {
+        "score": 40,
+        "grade": "D"
+      }
+    },
+    {
+      "name": "just under D",
+      "findings": [
+        {
+          "score": 39,
+          "weight": 100
+        }
+      ],
+      "expect": {
+        "score": 39,
+        "grade": "F"
+      }
+    },
+    {
+      "name": "tie rounds down to even (2.5 -> 2)",
+      "findings": [
+        {
+          "score": 2,
+          "weight": 80
+        }
+      ],
+      "expect": {
+        "score": 2,
+        "grade": "F"
+      }
+    },
+    {
+      "name": "tie rounds up to even (7.5 -> 8)",
+      "findings": [
+        {
+          "score": 6,
+          "weight": 80
+        }
+      ],
+      "expect": {
+        "score": 8,
+        "grade": "F"
+      }
+    },
+    {
+      "name": "tie at the grade boundary (89.5 -> 90)",
+      "findings": [
+        {
+          "score": 179,
+          "weight": 200
+        }
+      ],
+      "expect": {
+        "score": 90,
+        "grade": "A"
+      }
+    },
+    {
+      "name": "tie at the grade boundary (74.5 -> 74)",
+      "findings": [
+        {
+          "score": 149,
+          "weight": 200
+        }
+      ],
+      "expect": {
+        "score": 74,
+        "grade": "C"
+      }
+    },
+    {
+      "name": "non-tie rounds to nearest (2/3 -> 67)",
+      "findings": [
+        {
+          "score": 2,
+          "weight": 3
+        }
+      ],
+      "expect": {
+        "score": 67,
+        "grade": "C"
+      }
+    },
+    {
+      "name": "normalised over applicable checks (http, no cookies)",
+      "findings": [
+        {
+          "score": 0,
+          "weight": 0
+        },
+        {
+          "score": 25,
+          "weight": 25
+        },
+        {
+          "score": 15,
+          "weight": 15
+        },
+        {
+          "score": 10,
+          "weight": 10
+        },
+        {
+          "score": 10,
+          "weight": 10
+        },
+        {
+          "score": 10,
+          "weight": 10
+        },
+        {
+          "score": 5,
+          "weight": 5
+        },
+        {
+          "score": 5,
+          "weight": 5
+        },
+        {
+          "score": 0,
+          "weight": 0
+        }
+      ],
+      "expect": {
+        "score": 100,
+        "grade": "A"
+      }
+    }
+  ],
+  "reports": [
+    {
+      "name": "no headers over https",
+      "headers": [],
+      "isHttps": true,
+      "expect": {
+        "score": 10,
+        "grade": "F",
+        "maxScore": 100,
+        "statuses": ["fail", "fail", "fail", "fail", "warn", "warn", "warn", "pass", "info"]
+      }
+    },
+    {
+      "name": "no headers over http (12.5 rounds to 12)",
+      "headers": [],
+      "isHttps": false,
+      "expect": {
+        "score": 12,
+        "grade": "F",
+        "maxScore": 80,
+        "statuses": ["info", "fail", "fail", "fail", "warn", "warn", "warn", "pass", "info"]
+      }
+    },
+    {
+      "name": "strong configuration",
+      "isHttps": true,
+      "headers": [
+        ["Strict-Transport-Security", "max-age=31536000; includeSubDomains"],
+        [
+          "Content-Security-Policy",
+          "default-src 'self'; object-src 'none'; frame-ancestors 'none'"
+        ],
+        ["X-Content-Type-Options", "nosniff"],
+        ["Referrer-Policy", "no-referrer"],
+        ["Permissions-Policy", "camera=()"],
+        ["Cross-Origin-Opener-Policy", "same-origin"]
+      ],
+      "expect": {
+        "score": 100,
+        "grade": "A",
+        "maxScore": 100,
+        "statuses": ["pass", "pass", "pass", "pass", "pass", "pass", "pass", "pass", "info"]
+      }
+    },
+    {
+      "name": "typical framework defaults",
+      "isHttps": true,
+      "headers": [
+        ["Server", "nginx/1.25.3"],
+        ["X-Powered-By", "Express"],
+        ["X-Frame-Options", "SAMEORIGIN"],
+        ["X-Content-Type-Options", "nosniff"],
+        ["Set-Cookie", "connect.sid=abc; Path=/; HttpOnly"]
+      ],
+      "expect": {
+        "score": 34,
+        "grade": "F",
+        "maxScore": 110,
+        "statuses": ["fail", "fail", "pass", "pass", "warn", "warn", "warn", "warn", "warn"]
+      }
+    }
+  ]
+}

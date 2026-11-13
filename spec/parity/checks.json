@@ -578,6 +578,286 @@
         "score": 0,
         "weight": 15
       }
+    },
+    {
+      "check": "permissions-policy",
+      "name": "missing",
+      "headers": [],
+      "expect": {
+        "status": "warn",
+        "score": 0,
+        "weight": 10
+      }
+    },
+    {
+      "check": "permissions-policy",
+      "name": "present",
+      "headers": [["Permissions-Policy", "camera=(), microphone=()"]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      }
+    },
+    {
+      "check": "permissions-policy",
+      "name": "whitespace only counts as missing",
+      "headers": [["Permissions-Policy", "   "]],
+      "expect": {
+        "status": "warn",
+        "score": 0,
+        "weight": 10
+      }
+    },
+    {
+      "check": "permissions-policy",
+      "name": "name is case-insensitive",
+      "headers": [["permissions-policy", "geolocation=()"]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      }
+    },
+    {
+      "check": "coop",
+      "name": "missing",
+      "headers": [],
+      "expect": {
+        "status": "warn",
+        "score": 0,
+        "weight": 5
+      }
+    },
+    {
+      "check": "coop",
+      "name": "same-origin",
+      "headers": [["Cross-Origin-Opener-Policy", "same-origin"]],
+      "expect": {
+        "status": "pass",
+        "score": 5,
+        "weight": 5
+      }
+    },
+    {
+      "check": "coop",
+      "name": "same-origin-allow-popups",
+      "headers": [["Cross-Origin-Opener-Policy", "same-origin-allow-popups"]],
+      "expect": {
+        "status": "pass",
+        "score": 5,
+        "weight": 5
+      }
+    },
+    {
+      "check": "coop",
+      "name": "unsafe-none",
+      "headers": [["Cross-Origin-Opener-Policy", "unsafe-none"]],
+      "expect": {
+        "status": "warn",
+        "score": 0,
+        "weight": 5
+      }
+    },
+    {
+      "check": "coop",
+      "name": "uppercase value",
+      "headers": [["Cross-Origin-Opener-Policy", "SAME-ORIGIN"]],
+      "expect": {
+        "status": "pass",
+        "score": 5,
+        "weight": 5
+      }
+    },
+    {
+      "check": "coop",
+      "name": "token with report-to parameter",
+      "headers": [["Cross-Origin-Opener-Policy", "same-origin; report-to=\"coop\""]],
+      "expect": {
+        "status": "pass",
+        "score": 5,
+        "weight": 5
+      }
+    },
+    {
+      "check": "coop",
+      "name": "unsafe-none with parameter",
+      "headers": [["Cross-Origin-Opener-Policy", "unsafe-none; report-to=\"coop\""]],
+      "expect": {
+        "status": "warn",
+        "score": 0,
+        "weight": 5
+      }
+    },
+    {
+      "check": "info-disclosure",
+      "name": "no stack headers",
+      "headers": [],
+      "expect": {
+        "status": "pass",
+        "score": 5,
+        "weight": 5
+      }
+    },
+    {
+      "check": "info-disclosure",
+      "name": "bare Server product name",
+      "headers": [["Server", "nginx"]],
+      "expect": {
+        "status": "pass",
+        "score": 5,
+        "weight": 5
+      }
+    },
+    {
+      "check": "info-disclosure",
+      "name": "Server with version",
+      "headers": [["Server", "Apache/2.4.1"]],
+      "expect": {
+        "status": "warn",
+        "score": 0,
+        "weight": 5
+      }
+    },
+    {
+      "check": "info-disclosure",
+      "name": "X-Powered-By without version",
+      "headers": [["X-Powered-By", "Express"]],
+      "expect": {
+        "status": "warn",
+        "score": 0,
+        "weight": 5
+      }
+    },
+    {
+      "check": "info-disclosure",
+      "name": "ASP.NET version",
+      "headers": [["X-AspNet-Version", "4.0.30319"]],
+      "expect": {
+        "status": "warn",
+        "score": 0,
+        "weight": 5
+      }
+    },
+    {
+      "check": "info-disclosure",
+      "name": "empty X-Powered-By ignored",
+      "headers": [["X-Powered-By", ""]],
+      "expect": {
+        "status": "pass",
+        "score": 5,
+        "weight": 5
+      }
+    },
+    {
+      "check": "cookies",
+      "name": "no cookies",
+      "headers": [],
+      "expect": {
+        "status": "info",
+        "score": 0,
+        "weight": 0
+      }
+    },
+    {
+      "check": "cookies",
+      "name": "all flags",
+      "headers": [["Set-Cookie", "sid=1; Secure; HttpOnly; SameSite=Lax"]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      }
+    },
+    {
+      "check": "cookies",
+      "name": "no flags",
+      "headers": [["Set-Cookie", "sid=1; Path=/"]],
+      "expect": {
+        "status": "warn",
+        "score": 7,
+        "weight": 10
+      }
+    },
+    {
+      "check": "cookies",
+      "name": "Secure not required over http",
+      "headers": [["Set-Cookie", "sid=1; HttpOnly; SameSite=Lax"]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      },
+      "isHttps": false
+    },
+    {
+      "check": "cookies",
+      "name": "Secure still missing over https",
+      "headers": [["Set-Cookie", "sid=1; HttpOnly; SameSite=Lax"]],
+      "expect": {
+        "status": "warn",
+        "score": 7,
+        "weight": 10
+      }
+    },
+    {
+      "check": "cookies",
+      "name": "flags are case-insensitive",
+      "headers": [["Set-Cookie", "sid=1; SECURE; httponly; samesite=strict"]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      }
+    },
+    {
+      "check": "cookies",
+      "name": "whitespace around attribute name",
+      "headers": [["Set-Cookie", "sid=1; Secure ; HttpOnly; SameSite = Lax"]],
+      "expect": {
+        "status": "pass",
+        "score": 10,
+        "weight": 10
+      }
+    },
+    {
+      "check": "cookies",
+      "name": "flag inside the value does not count",
+      "headers": [["Set-Cookie", "sid=Secure; HttpOnly; SameSite=Lax"]],
+      "expect": {
+        "status": "warn",
+        "score": 7,
+        "weight": 10
+      }
+    },
+    {
+      "check": "cookies",
+      "name": "each bad cookie costs 3",
+      "headers": [
+        ["Set-Cookie", "a=1"],
+        ["Set-Cookie", "b=2"],
+        ["Set-Cookie", "c=3; Secure; HttpOnly; SameSite=Lax"]
+      ],
+      "expect": {
+        "status": "warn",
+        "score": 4,
+        "weight": 10
+      }
+    },
+    {
+      "check": "cookies",
+      "name": "score floors at zero",
+      "headers": [
+        ["Set-Cookie", "a=1"],
+        ["Set-Cookie", "b=2"],
+        ["Set-Cookie", "c=3"],
+        ["Set-Cookie", "d=4"]
+      ],
+      "expect": {
+        "status": "warn",
+        "score": 0,
+        "weight": 10
+      }
     }
   ]
 }
