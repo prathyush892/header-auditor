@@ -102,3 +102,22 @@ def test_csp_details_match_typescript():
         "CSP frame-ancestors 'self' https://a.test."
     assert check_framing(H(Content_Security_Policy="frame-ancestors 'self' *")).detail == \
         "CSP frame-ancestors allows any origin (*)."
+
+
+def test_coop_ignores_parameters():
+    f = check_coop(H(Cross_Origin_Opener_Policy='same-origin; report-to="coop"'))
+    assert f.status == PASS and f.detail == "same-origin."
+    assert check_coop(H(Cross_Origin_Opener_Policy="unsafe-none; report-to=x")).status == WARN
+
+
+def test_cookie_attribute_names_are_trimmed():
+    f = check_cookies(Headers([("Set-Cookie", "sid=1; Secure ; HttpOnly; SameSite = Lax")]))
+    assert f.status == PASS
+    bad = check_cookies(Headers([("Set-Cookie", " sid =1; Path=/"), ("Set-Cookie", "tok")]))
+    assert bad.detail == "sid missing Secure/HttpOnly/SameSite; tok missing Secure/HttpOnly/SameSite."
+
+
+def test_report_rounds_half_to_even():
+    # 10 of 80 points = 12.5%; Python's round() gives 12, and the TS engine must too.
+    r = Report("http://x", 200, run_all(H(), is_https=False))
+    assert (r.max_score, r.score) == (80, 12)

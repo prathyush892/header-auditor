@@ -250,7 +250,9 @@ def check_permissions_policy(h: Headers) -> Finding:
 
 def check_coop(h: Headers) -> Finding:
     name, weight = "Cross-Origin-Opener-Policy", 5
-    val = (h.get(name) or "").lower()
+    # COOP is a structured-header token that may carry parameters
+    # (`same-origin; report-to="coop"`); only the token decides the policy.
+    val = (h.get(name) or "").split(";", 1)[0].strip().lower()
     if val in ("same-origin", "same-origin-allow-popups"):
         return Finding(name, PASS, f"{val}.", weight, weight)
     return Finding(name, WARN, "Missing or permissive.", weight, 0, f"Add `{name}: same-origin`.")
@@ -280,9 +282,10 @@ def check_cookies(h: Headers, is_https: bool = True) -> Finding:
     weight = 10
     issues = []
     for c in cookies:
-        cname = c.split("=", 1)[0].strip()
-        attrs = [a.strip().lower() for a in c.split(";")[1:]]
-        flags = {a.split("=", 1)[0] for a in attrs}
+        pair, *attrs = c.split(";")
+        cname = pair.split("=", 1)[0].strip()
+        # RFC 6265 5.2: attribute names are trimmed, so `SameSite = Lax` counts.
+        flags = {a.split("=", 1)[0].strip().lower() for a in attrs}
         missing = []
         if is_https and "secure" not in flags:
             missing.append("Secure")
