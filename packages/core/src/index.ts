@@ -1,9 +1,10 @@
 /**
  * @header-auditor/core — the TypeScript scan engine.
  *
- * A pure (no network, no I/O) port of the Python checks. Each check takes a
- * HeaderMap and returns a Finding; behaviour is pinned to the Python engine by
- * the shared cases in spec/parity/checks.json.
+ * The checks are a pure (no network, no I/O) port of the Python engine: each
+ * takes a HeaderMap and returns a Finding, pinned to Python by the shared cases
+ * in spec/parity/checks.json. The only network code lives in `scan/`, where
+ * `scanUrl()` fetches a URL under an SSRF policy and feeds the checks.
  */
 
 /** Semantic version of the scan engine, reported alongside every scan result. */
@@ -40,3 +41,4 @@ export {
   type RunOptions,
   type Score,
 } from "./report.js";
+export * from "./scan/index.js";
