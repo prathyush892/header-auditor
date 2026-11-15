@@ -4,7 +4,8 @@
  * The checks are a pure (no network, no I/O) port of the Python engine: each
  * takes a HeaderMap and returns a Finding, pinned to Python by the shared cases
  * in spec/parity/checks.json. The only network code lives in `scan/`, where
- * `scanUrl()` fetches a URL under an SSRF policy and feeds the checks.
+ * `scanUrl()` fetches a URL under an SSRF policy and feeds the checks, and in
+ * `tls/`, where `probeTls()` handshakes under the same policy.
  */
 
 /** Semantic version of the scan engine, reported alongside every scan result. */
@@ -42,3 +43,4 @@ export {
   type Score,
 } from "./report.js";
 export * from "./scan/index.js";
+export * from "./tls/index.js";

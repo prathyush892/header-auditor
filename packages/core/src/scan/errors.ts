@@ -9,6 +9,7 @@ export type ScanErrorCode =
   | "REDIRECT_LOOP"
   | "TIMEOUT"
   | "ABORTED"
+  | "TLS_ERROR"
   | "NETWORK";
 
 export class ScanError extends Error {

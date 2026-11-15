@@ -49,6 +49,11 @@ export interface ScanOptions {
   /** Hostname resolver; defaults to the OS resolver. Inject fixtures in tests. */
   resolver?: Resolver;
   userAgent?: string;
+  /**
+   * PEM CA certificate(s) to trust for https targets *instead of* the system
+   * roots, for a private PKI or tests. Certificate errors are never ignored.
+   */
+  ca?: string | readonly string[];
   /** Cancels the scan (e.g. the API request was aborted). */
   signal?: AbortSignal;
 }
@@ -73,11 +78,27 @@ interface ResolvedOptions {
   policy: AddressPolicy;
   resolver: Resolver;
   userAgent: string;
+  ca: string[] | undefined;
   signal: AbortSignal | undefined;
 }
 
 function invalidOption(message: string): ScanError {
   return new ScanError("INVALID_OPTIONS", message);
+}
+
+/** Validates the `ca` option: one or more PEM certificates, or undefined. */
+export function normalizeCaOption(
+  ca: string | readonly string[] | undefined,
+): string[] | undefined {
+  if (ca === undefined) return undefined;
+  const list: unknown[] = typeof ca === "string" ? [ca] : [...ca];
+  const valid = list.every(
+    (c): c is string => typeof c === "string" && c.includes("-----BEGIN CERTIFICATE-----"),
+  );
+  if (list.length === 0 || !valid) {
+    throw invalidOption("ca must be one or more PEM-encoded certificates");
+  }
+  return list;
 }
 
 function resolveOptions(options: ScanOptions): ResolvedOptions {
@@ -108,6 +129,7 @@ function resolveOptions(options: ScanOptions): ResolvedOptions {
     policy: { allowPrivate: options.allowPrivate ?? false, allowList },
     resolver: options.resolver ?? systemResolver,
     userAgent,
+    ca: normalizeCaOption(options.ca),
     signal: options.signal,
   };
 }
@@ -165,6 +187,26 @@ const TIMEOUT_CODES = new Set([
   "UND_ERR_BODY_TIMEOUT",
 ]);
 
+/** Certificate verification failures (OpenSSL verify codes plus Node's hostname check). */
+const CERT_ERROR_CODES = new Set([
+  "CERT_HAS_EXPIRED",
+  "CERT_NOT_YET_VALID",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "UNABLE_TO_GET_ISSUER_CERT",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "CERT_UNTRUSTED",
+  "CERT_REVOKED",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
+/** True for handshake and certificate failures, which get the TLS_ERROR code. */
+export function isTlsFailure(err: unknown): boolean {
+  const code = errorCode(err) ?? "";
+  return CERT_ERROR_CODES.has(code) || code.startsWith("ERR_SSL_");
+}
+
 /** Maps whatever undici/the socket threw into one ScanError with a stable code. */
 function toScanError(
   err: unknown,
@@ -189,6 +231,7 @@ function toScanError(
   if (outcome.dnsError !== undefined)
     return fail("DNS_FAILURE", `Could not resolve ${new URL(url).hostname}`);
   const detail = err instanceof Error ? err.message : String(err);
+  if (isTlsFailure(err)) return fail("TLS_ERROR", `TLS error: ${detail}`);
   return fail("NETWORK", `Request failed: ${detail}`);
 }
 
@@ -230,7 +273,10 @@ export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promis
   const signal = opts.signal ? AbortSignal.any([deadline, opts.signal]) : deadline;
   const outcome: LookupOutcome = {};
   const agent = new Agent({
-    connect: { lookup: createGuardedLookup(opts.resolver, opts.policy, outcome) },
+    connect: {
+      lookup: createGuardedLookup(opts.resolver, opts.policy, outcome),
+      ...(opts.ca ? { ca: opts.ca } : {}),
+    },
     connectTimeout: opts.timeoutMs,
     headersTimeout: opts.timeoutMs,
     bodyTimeout: opts.timeoutMs,
