@@ -18,14 +18,18 @@ export {
 } from "./lookup.js";
 export {
   ALLOWED_SCHEMES,
+  DEFAULT_MAX_BODY_BYTES,
   DEFAULT_MAX_REDIRECTS,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_USER_AGENT,
   MAX_REDIRECTS_LIMIT,
   MAX_TIMEOUT_MS,
+  isHtmlResponse,
   isTlsFailure,
+  MAX_BODY_BYTES_LIMIT,
   MAX_URL_LENGTH,
   normalizeCaOption,
+  parseContentType,
   REDIRECT_STATUSES,
   scanUrl,
   validateTarget,

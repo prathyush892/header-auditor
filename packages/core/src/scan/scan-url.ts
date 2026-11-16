@@ -7,7 +7,9 @@
  * because a redirect is just another user-controlled URL: a public page that
  * answers `302 Location: http://169.254.169.254/` must not get through.
  */
+import { TextDecoder } from "node:util";
 import { Agent, request, type Dispatcher } from "undici";
+import { buildContentReport, type ContentReport } from "../content/report.js";
 import { HeaderMap, type HeaderInput } from "../headers.js";
 import { buildReport, runAll, type Report } from "../report.js";
 import {
@@ -34,6 +36,11 @@ export const DEFAULT_MAX_REDIRECTS = 5;
 export const MAX_REDIRECTS_LIMIT = 20;
 export const MAX_URL_LENGTH = 2048;
 export const DEFAULT_USER_AGENT = "header-auditor-core (+security header check)";
+/** HTML read from the final response for content checks. 1 MiB covers almost every page's markup. */
+export const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
+export const MAX_BODY_BYTES_LIMIT = 10 * 1024 * 1024;
+/** Bytes drained from responses whose body isn't inspected, so the socket can be reused. */
+const DRAIN_LIMIT = 64 * 1024;
 
 export interface ScanOptions {
   /** Total time budget for the whole scan, every hop included. Default 10 s. */
@@ -56,6 +63,12 @@ export interface ScanOptions {
   ca?: string | readonly string[];
   /** Cancels the scan (e.g. the API request was aborted). */
   signal?: AbortSignal;
+  /**
+   * Bytes of the final response's HTML to read for content checks (mixed
+   * content). Larger bodies are truncated, never buffered in full. 0 skips the
+   * body. Default 1 MiB, max 10 MiB.
+   */
+  maxBodyBytes?: number;
 }
 
 export interface RedirectHop {
@@ -66,9 +79,12 @@ export interface RedirectHop {
 }
 
 export interface ScanResult {
+  /** Header checks, scored exactly like the Python CLI. */
   readonly report: Report;
   /** Every redirect that was followed, in order; empty when there were none. */
   readonly redirects: readonly RedirectHop[];
+  /** Redirect-chain and mixed-content checks, scored separately. */
+  readonly content: ContentReport;
 }
 
 interface ResolvedOptions {
@@ -80,6 +96,7 @@ interface ResolvedOptions {
   userAgent: string;
   ca: string[] | undefined;
   signal: AbortSignal | undefined;
+  maxBodyBytes: number;
 }
 
 function invalidOption(message: string): ScanError {
@@ -112,6 +129,12 @@ function resolveOptions(options: ScanOptions): ResolvedOptions {
       `maxRedirects must be an integer between 0 and ${String(MAX_REDIRECTS_LIMIT)}`,
     );
   }
+  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+  if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 0 || maxBodyBytes > MAX_BODY_BYTES_LIMIT) {
+    throw invalidOption(
+      `maxBodyBytes must be an integer between 0 and ${String(MAX_BODY_BYTES_LIMIT)}`,
+    );
+  }
   const userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
   if (userAgent.length === 0 || userAgent.length > 256 || /[\r\n\0]/.test(userAgent)) {
     throw invalidOption("userAgent must be 1-256 characters without CR, LF or NUL");
@@ -131,6 +154,7 @@ function resolveOptions(options: ScanOptions): ResolvedOptions {
     userAgent,
     ca: normalizeCaOption(options.ca),
     signal: options.signal,
+    maxBodyBytes,
   };
 }
 
@@ -242,6 +266,71 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
 interface HopResponse {
   statusCode: number;
   headers: Dispatcher.ResponseData["headers"];
+  /** Decoded HTML when the body was read, else undefined. */
+  html: string | undefined;
+  bodyBytes: number;
+  bodyTruncated: boolean;
+}
+
+const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
+
+/** Media type and charset from a Content-Type value; parameters are case-insensitive. */
+export function parseContentType(value: string | undefined): {
+  mediaType: string;
+  charset: string | undefined;
+} {
+  const [type = "", ...params] = (value ?? "").split(";");
+  let charset: string | undefined;
+  for (const param of params) {
+    const eq = param.indexOf("=");
+    if (eq === -1 || param.slice(0, eq).trim().toLowerCase() !== "charset") continue;
+    charset = param
+      .slice(eq + 1)
+      .trim()
+      .replace(/^"(.*)"$/, "$1");
+  }
+  return { mediaType: type.trim().toLowerCase(), charset };
+}
+
+/** True when a response should be read as HTML (a missing Content-Type is sniffed as HTML by browsers). */
+export function isHtmlResponse(contentType: string | undefined): boolean {
+  if (contentType === undefined) return true;
+  return HTML_TYPES.has(parseContentType(contentType).mediaType);
+}
+
+function decoderFor(charset: string | undefined): TextDecoder {
+  try {
+    return new TextDecoder(charset ?? "utf-8");
+  } catch {
+    return new TextDecoder("utf-8"); // unknown label: fall back rather than fail the scan
+  }
+}
+
+/**
+ * Reads at most `limit` bytes of `body`, then stops pulling and lets the
+ * caller discard the connection. Never buffers more than the limit, so a
+ * hostile multi-gigabyte page can't exhaust memory.
+ */
+async function readBounded(
+  body: Dispatcher.ResponseData["body"],
+  limit: number,
+): Promise<{ bytes: Buffer; truncated: boolean }> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  let truncated = false;
+  for await (const chunk of body as AsyncIterable<Buffer>) {
+    const room = limit - total;
+    if (chunk.length > room) {
+      chunks.push(chunk.subarray(0, room));
+      total += room;
+      truncated = true;
+      break;
+    }
+    chunks.push(chunk);
+    total += chunk.length;
+  }
+  if (truncated) body.destroy();
+  return { bytes: Buffer.concat(chunks, total), truncated };
 }
 
 async function fetchOnce(
@@ -249,6 +338,7 @@ async function fetchOnce(
   dispatcher: Dispatcher,
   signal: AbortSignal,
   userAgent: string,
+  maxBodyBytes: number,
 ): Promise<HopResponse> {
   const res = await request(url, {
     method: "GET",
@@ -256,9 +346,24 @@ async function fetchOnce(
     signal,
     headers: { "user-agent": userAgent, accept: "text/html,*/*;q=0.8" },
   });
-  // Only headers are graded; drain (bounded) so the socket can be released.
-  await res.body.dump({ limit: 64 * 1024 });
-  return { statusCode: res.statusCode, headers: res.headers };
+  const contentType = firstHeader(res.headers["content-type"]);
+  const isRedirect = REDIRECT_STATUSES.has(res.statusCode) && res.headers.location !== undefined;
+  // Redirect bodies are never inspected; only the final page's HTML is.
+  if (isRedirect || maxBodyBytes === 0 || !isHtmlResponse(contentType)) {
+    // Drain (bounded) so the socket can be released.
+    await res.body.dump({ limit: DRAIN_LIMIT });
+    const { statusCode, headers } = res;
+    return { statusCode, headers, html: undefined, bodyBytes: 0, bodyTruncated: false };
+  }
+  const { bytes, truncated } = await readBounded(res.body, maxBodyBytes);
+  const html = decoderFor(parseContentType(contentType).charset).decode(bytes);
+  return {
+    statusCode: res.statusCode,
+    headers: res.headers,
+    html,
+    bodyBytes: bytes.length,
+    bodyTruncated: truncated,
+  };
 }
 
 /**
@@ -292,7 +397,7 @@ export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promis
       delete outcome.dnsError;
       let res: HopResponse;
       try {
-        res = await fetchOnce(current, agent, signal, opts.userAgent);
+        res = await fetchOnce(current, agent, signal, opts.userAgent, opts.maxBodyBytes);
       } catch (err) {
         throw toScanError(err, current.href, outcome, deadline, opts.signal);
       }
@@ -303,7 +408,15 @@ export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promis
         const headers = new HeaderMap(res.headers as HeaderInput);
         const findings = runAll(headers, { isHttps: current.protocol === "https:" });
         const report = buildReport(current.href, res.statusCode, findings);
-        return Object.freeze({ report, redirects: Object.freeze(redirects) });
+        const content = buildContentReport({
+          pageUrl: current.href,
+          headers,
+          redirects,
+          html: res.html,
+          bodyBytes: res.bodyBytes,
+          bodyTruncated: res.bodyTruncated,
+        });
+        return Object.freeze({ report, redirects: Object.freeze(redirects), content });
       }
 
       if (redirects.length >= opts.maxRedirects) {
@@ -333,6 +446,16 @@ export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promis
       );
       current = target;
     }
+  } catch (err) {
+    // Attach the chain so callers can see how far the scan got (e.g. it did reach https).
+    if (err instanceof ScanError && err.redirects.length === 0 && redirects.length > 0) {
+      throw new ScanError(err.code, err.message, {
+        url: err.url,
+        cause: err.cause,
+        redirects,
+      });
+    }
+    throw err;
   } finally {
     await agent.destroy();
   }

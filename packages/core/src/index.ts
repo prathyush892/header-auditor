@@ -5,7 +5,8 @@
  * takes a HeaderMap and returns a Finding, pinned to Python by the shared cases
  * in spec/parity/checks.json. The only network code lives in `scan/`, where
  * `scanUrl()` fetches a URL under an SSRF policy and feeds the checks, and in
- * `tls/`, where `probeTls()` handshakes under the same policy.
+ * `tls/`, where `probeTls()` handshakes under the same policy. `content/` holds
+ * the redirect-chain and mixed-content checks plus `probeHttpsRedirect()`.
  */
 
 /** Semantic version of the scan engine, reported alongside every scan result. */
@@ -44,3 +45,4 @@ export {
 } from "./report.js";
 export * from "./scan/index.js";
 export * from "./tls/index.js";
+export * from "./content/index.js";
