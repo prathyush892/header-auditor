@@ -7,6 +7,7 @@
  * `scanUrl()` fetches a URL under an SSRF policy and feeds the checks, and in
  * `tls/`, where `probeTls()` handshakes under the same policy. `content/` holds
  * the redirect-chain and mixed-content checks plus `probeHttpsRedirect()`.
+ * `dns/` runs CAA, SPF and DMARC checks through an injectable `DnsResolver`.
  */
 
 /** Semantic version of the scan engine, reported alongside every scan result. */
@@ -46,3 +47,4 @@ export {
 export * from "./scan/index.js";
 export * from "./tls/index.js";
 export * from "./content/index.js";
+export * from "./dns/index.js";
