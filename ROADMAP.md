@@ -40,7 +40,7 @@ Rules that every step follows:
 
 - [x] 6. TLS check: protocol version, certificate expiry/issuer/hostname match, weak ciphers flag, with a local self-signed test server
 - [x] 7. HTTP→HTTPS redirect check and mixed-content detection in the returned HTML
-- [ ] 8. DNS checks: CAA record, SPF and DMARC presence/strength (resolver injected so tests use fixtures)
+- [x] 8. DNS checks: CAA record, SPF and DMARC presence/strength (resolver injected so tests use fixtures)
 - [ ] 9. `security.txt` (RFC 9116) and `robots.txt` sensitive-path exposure check
 - [ ] 10. Subresource Integrity check for third-party `<script>`/`<link>` tags
 
