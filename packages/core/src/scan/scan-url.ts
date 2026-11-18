@@ -263,15 +263,6 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-interface HopResponse {
-  statusCode: number;
-  headers: Dispatcher.ResponseData["headers"];
-  /** Decoded HTML when the body was read, else undefined. */
-  html: string | undefined;
-  bodyBytes: number;
-  bodyTruncated: boolean;
-}
-
 const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
 
 /** Media type and charset from a Content-Type value; parameters are case-insensitive. */
@@ -333,47 +324,75 @@ async function readBounded(
   return { bytes: Buffer.concat(chunks, total), truncated };
 }
 
+/** Decides, per response, whether its body is read (and up to how many bytes). */
+interface BodyPolicy {
+  /** Sent as the Accept header. */
+  accept: string;
+  /** Max bytes to read; 0 never reads a body. */
+  maxBytes: number;
+  /** Whether a final (non-redirect) response's body should be read. */
+  wants: (statusCode: number, contentType: string | undefined) => boolean;
+}
+
+interface HopResponse {
+  statusCode: number;
+  headers: Dispatcher.ResponseData["headers"];
+  /** Decoded body when it was read, else undefined. */
+  body: string | undefined;
+  bodyBytes: number;
+  bodyTruncated: boolean;
+}
+
 async function fetchOnce(
   url: URL,
   dispatcher: Dispatcher,
   signal: AbortSignal,
   userAgent: string,
-  maxBodyBytes: number,
+  body: BodyPolicy,
 ): Promise<HopResponse> {
   const res = await request(url, {
     method: "GET",
     dispatcher,
     signal,
-    headers: { "user-agent": userAgent, accept: "text/html,*/*;q=0.8" },
+    headers: { "user-agent": userAgent, accept: body.accept },
   });
   const contentType = firstHeader(res.headers["content-type"]);
   const isRedirect = REDIRECT_STATUSES.has(res.statusCode) && res.headers.location !== undefined;
-  // Redirect bodies are never inspected; only the final page's HTML is.
-  if (isRedirect || maxBodyBytes === 0 || !isHtmlResponse(contentType)) {
+  // Redirect bodies are never inspected; only the final response's body is.
+  if (isRedirect || body.maxBytes === 0 || !body.wants(res.statusCode, contentType)) {
     // Drain (bounded) so the socket can be released.
     await res.body.dump({ limit: DRAIN_LIMIT });
     const { statusCode, headers } = res;
-    return { statusCode, headers, html: undefined, bodyBytes: 0, bodyTruncated: false };
+    return { statusCode, headers, body: undefined, bodyBytes: 0, bodyTruncated: false };
   }
-  const { bytes, truncated } = await readBounded(res.body, maxBodyBytes);
-  const html = decoderFor(parseContentType(contentType).charset).decode(bytes);
+  const { bytes, truncated } = await readBounded(res.body, body.maxBytes);
+  const text = decoderFor(parseContentType(contentType).charset).decode(bytes);
   return {
     statusCode: res.statusCode,
     headers: res.headers,
-    html,
+    body: text,
     bodyBytes: bytes.length,
     bodyTruncated: truncated,
   };
 }
 
+/** The response a redirect chain ended on. */
+interface ChainEnd {
+  url: URL;
+  response: HopResponse;
+  redirects: readonly RedirectHop[];
+}
+
 /**
- * Fetches `rawUrl` and grades the final response's security headers.
- *
- * @throws ScanError with a stable `code` for bad input, blocked targets,
- *   redirect problems, timeouts and network failures.
+ * Requests `rawUrl` and follows redirects under the SSRF policy, re-validating
+ * every hop. Shared by `scanUrl()` and `fetchText()` so both get exactly the
+ * same guard, timeouts and redirect limits.
  */
-export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promise<ScanResult> {
-  const opts = resolveOptions(options);
+async function followChain(
+  rawUrl: string,
+  opts: ResolvedOptions,
+  bodyPolicy: BodyPolicy,
+): Promise<ChainEnd> {
   const deadline = AbortSignal.timeout(opts.timeoutMs);
   const signal = opts.signal ? AbortSignal.any([deadline, opts.signal]) : deadline;
   const outcome: LookupOutcome = {};
@@ -397,7 +416,7 @@ export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promis
       delete outcome.dnsError;
       let res: HopResponse;
       try {
-        res = await fetchOnce(current, agent, signal, opts.userAgent, opts.maxBodyBytes);
+        res = await fetchOnce(current, agent, signal, opts.userAgent, bodyPolicy);
       } catch (err) {
         throw toScanError(err, current.href, outcome, deadline, opts.signal);
       }
@@ -405,18 +424,7 @@ export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promis
       const location = firstHeader(res.headers.location);
       const isRedirect = REDIRECT_STATUSES.has(res.statusCode) && location !== undefined;
       if (!isRedirect || !opts.followRedirects) {
-        const headers = new HeaderMap(res.headers as HeaderInput);
-        const findings = runAll(headers, { isHttps: current.protocol === "https:" });
-        const report = buildReport(current.href, res.statusCode, findings);
-        const content = buildContentReport({
-          pageUrl: current.href,
-          headers,
-          redirects,
-          html: res.html,
-          bodyBytes: res.bodyBytes,
-          bodyTruncated: res.bodyTruncated,
-        });
-        return Object.freeze({ report, redirects: Object.freeze(redirects), content });
+        return { url: current, response: res, redirects: Object.freeze(redirects) };
       }
 
       if (redirects.length >= opts.maxRedirects) {
@@ -459,4 +467,88 @@ export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promis
   } finally {
     await agent.destroy();
   }
+}
+
+/**
+ * Fetches `rawUrl` and grades the final response's security headers.
+ *
+ * @throws ScanError with a stable `code` for bad input, blocked targets,
+ *   redirect problems, timeouts and network failures.
+ */
+export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promise<ScanResult> {
+  const opts = resolveOptions(options);
+  const { url, response, redirects } = await followChain(rawUrl, opts, {
+    accept: "text/html,*/*;q=0.8",
+    maxBytes: opts.maxBodyBytes,
+    wants: (_status, contentType) => isHtmlResponse(contentType),
+  });
+  const headers = new HeaderMap(response.headers as HeaderInput);
+  const findings = runAll(headers, { isHttps: url.protocol === "https:" });
+  const report = buildReport(url.href, response.statusCode, findings);
+  const content = buildContentReport({
+    pageUrl: url.href,
+    headers,
+    redirects,
+    html: response.body,
+    bodyBytes: response.bodyBytes,
+    bodyTruncated: response.bodyTruncated,
+  });
+  return Object.freeze({ report, redirects, content });
+}
+
+/** Default and maximum bytes `fetchText()` reads. Small: it's for policy files, not pages. */
+export const DEFAULT_TEXT_BYTES = 64 * 1024;
+
+export interface FetchTextOptions extends Omit<ScanOptions, "maxBodyBytes"> {
+  /** Bytes of a 2xx body to read; larger bodies are truncated. Default 64 KiB, max 10 MiB. */
+  maxBytes?: number;
+  /** Accept header to send. Defaults to preferring text/plain. */
+  accept?: string;
+}
+
+export interface TextFetchResult {
+  /** The URL that produced the final response (after redirects). */
+  readonly url: string;
+  readonly statusCode: number;
+  /** Content-Type header of the final response, if any. */
+  readonly contentType: string | undefined;
+  /** Decoded body of a 2xx response; undefined for any other status. */
+  readonly text: string | undefined;
+  readonly bytes: number;
+  readonly truncated: boolean;
+  readonly redirects: readonly RedirectHop[];
+}
+
+/**
+ * Fetches a small text resource (robots.txt, security.txt...) under the same
+ * SSRF policy, timeouts and redirect rules as `scanUrl()`. Only 2xx bodies are
+ * read, and never more than `maxBytes`; non-2xx statuses are returned, not
+ * thrown, so callers can tell "missing" from "unreachable".
+ *
+ * @throws ScanError for bad input, blocked targets, redirect problems,
+ *   timeouts and network failures.
+ */
+export async function fetchText(
+  rawUrl: string,
+  options: FetchTextOptions = {},
+): Promise<TextFetchResult> {
+  const { maxBytes = DEFAULT_TEXT_BYTES, accept = "text/plain, */*;q=0.5", ...rest } = options;
+  if (accept.length === 0 || accept.length > 256 || /[\r\n\0]/.test(accept)) {
+    throw invalidOption("accept must be 1-256 characters without CR, LF or NUL");
+  }
+  const opts = resolveOptions({ ...rest, maxBodyBytes: maxBytes });
+  const { url, response, redirects } = await followChain(rawUrl, opts, {
+    accept,
+    maxBytes: opts.maxBodyBytes,
+    wants: (status) => status >= 200 && status < 300,
+  });
+  return Object.freeze({
+    url: url.href,
+    statusCode: response.statusCode,
+    contentType: firstHeader(response.headers["content-type"]),
+    text: response.body,
+    bytes: response.bodyBytes,
+    truncated: response.bodyTruncated,
+    redirects,
+  });
 }
