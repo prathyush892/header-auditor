@@ -8,6 +8,7 @@
  * `tls/`, where `probeTls()` handshakes under the same policy. `content/` holds
  * the redirect-chain and mixed-content checks plus `probeHttpsRedirect()`.
  * `dns/` runs CAA, SPF and DMARC checks through an injectable `DnsResolver`.
+ * `wellknown/` fetches and grades security.txt (RFC 9116) and robots.txt.
  */
 
 /** Semantic version of the scan engine, reported alongside every scan result. */
@@ -48,3 +49,4 @@ export * from "./scan/index.js";
 export * from "./tls/index.js";
 export * from "./content/index.js";
 export * from "./dns/index.js";
+export * from "./wellknown/index.js";
