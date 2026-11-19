@@ -42,7 +42,7 @@ Rules that every step follows:
 - [x] 7. HTTP→HTTPS redirect check and mixed-content detection in the returned HTML
 - [x] 8. DNS checks: CAA record, SPF and DMARC presence/strength (resolver injected so tests use fixtures)
 - [x] 9. `security.txt` (RFC 9116) and `robots.txt` sensitive-path exposure check
-- [ ] 10. Subresource Integrity check for third-party `<script>`/`<link>` tags
+- [x] 10. Subresource Integrity check for third-party `<script>`/`<link>` tags
 
 ## Milestone 3: API + database
 
