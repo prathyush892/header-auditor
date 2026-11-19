@@ -29,6 +29,22 @@ export {
   REDIRECT_CHAIN_WEIGHT,
   type HttpObservation,
 } from "./redirects.js";
+export {
+  checkSubresourceIntegrity,
+  findSriReferences,
+  isFirstPartyHost,
+  parseIntegrity,
+  SRI_ALGORITHMS,
+  SRI_CHECK,
+  SRI_MAX_EXAMPLES,
+  SRI_MAX_REFERENCES,
+  SRI_WEIGHT,
+  type SriInput,
+  type SriReference,
+  type SriResourceType,
+  type SriResult,
+  type SriStatus,
+} from "./sri.js";
 export { buildContentReport, type ContentInput, type ContentReport } from "./report.js";
 export {
   httpVariant,

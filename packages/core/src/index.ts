@@ -6,7 +6,7 @@
  * in spec/parity/checks.json. The only network code lives in `scan/`, where
  * `scanUrl()` fetches a URL under an SSRF policy and feeds the checks, and in
  * `tls/`, where `probeTls()` handshakes under the same policy. `content/` holds
- * the redirect-chain and mixed-content checks plus `probeHttpsRedirect()`.
+ * the redirect-chain, mixed-content and Subresource Integrity checks plus `probeHttpsRedirect()`.
  * `dns/` runs CAA, SPF and DMARC checks through an injectable `DnsResolver`.
  * `wellknown/` fetches and grades security.txt (RFC 9116) and robots.txt.
  */
