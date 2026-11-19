@@ -5,6 +5,7 @@
  * the https server uses a certificate minted at test time. The http:// URLs
  * inside the fixture HTML are never requested.
  */
+import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
@@ -27,6 +28,9 @@ import { TestPki } from "./helpers/pki.js";
 type Handler = (req: IncomingMessage, res: ServerResponse) => void;
 
 const pki = new TestPki();
+const SRI_HASH = `sha384-${createHash("sha384").update("console.log(1)").digest("base64")}`;
+/** Paths the https server saw, to prove the scanner never fetched subresources. */
+const requestedPaths: string[] = [];
 const httpRoutes = new Map<string, Handler>();
 const httpsRoutes = new Map<string, Handler>();
 const servers: Server[] = [];
@@ -51,6 +55,7 @@ function local(extra: LocalOptions = {}): LocalOptions {
 function router(routes: Map<string, Handler>): Handler {
   return (req, res) => {
     const path = new URL(req.url ?? "/", "http://placeholder").pathname;
+    requestedPaths.push(path);
     const handler = routes.get(path);
     if (handler) handler(req, res);
     else res.writeHead(404, { "content-type": "text/plain" }).end("not found");
@@ -130,6 +135,14 @@ beforeAll(async () => {
     redirect(302, () => `${httpBase}/plain`),
   );
   httpsRoutes.set("/ok", html("<p>ok</p>"));
+  httpsRoutes.set(
+    "/sri",
+    html(
+      `<script src="https://cdn.test/pinned.js" integrity="${SRI_HASH}" crossorigin="anonymous"></script>` +
+        '<script src="https://cdn.test/unpinned.js"></script>' +
+        '<script src="https://static.app.test/own.js"></script>',
+    ),
+  );
 
   // http side
   httpRoutes.set("/plain", html('<script src="http://cdn.test/a.js"></script>'));
@@ -203,10 +216,23 @@ describe("scanUrl content report", () => {
     expect(content.findings.map((f) => [f.check, f.status])).toEqual([
       ["Redirect chain", Status.Info],
       ["Mixed content", Status.Pass],
+      ["Subresource Integrity", Status.Pass],
     ]);
     expect(content.score).toBe(100);
     expect(content.bodyBytes).toBeGreaterThan(0);
     expect(content.bodyTruncated).toBe(false);
+  });
+
+  it("grades third-party Subresource Integrity without fetching the scripts", async () => {
+    requestedPaths.length = 0;
+    const { content } = await scanUrl(`${httpsBase}/sri`, local());
+    expect(content.subresourceIntegrity.map((r) => [r.url, r.status])).toEqual([
+      ["https://cdn.test/pinned.js", "protected"],
+      ["https://cdn.test/unpinned.js", "missing"],
+    ]);
+    expect(content.findings[2]?.status).toBe(Status.Fail);
+    // Only the page itself was requested; cdn.test doesn't even resolve.
+    expect(requestedPaths).toEqual(["/sri"]);
   });
 
   it("fails an https page that loads an http script", async () => {
