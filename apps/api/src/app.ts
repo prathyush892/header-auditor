@@ -1,0 +1,68 @@
+/**
+ * Builds the Fastify instance without listening on a port.
+ *
+ * Keeping construction separate from `listen()` is what makes the API
+ * testable: tests call `buildApp()` and drive it with `app.inject()`, which
+ * runs the full request lifecycle (hooks, validation, error handler,
+ * serialization) in memory, with no sockets and no port conflicts.
+ */
+import Fastify, { type FastifyInstance } from "fastify";
+
+import type { ApiConfig } from "./config.js";
+import { errorHandler, notFoundHandler } from "./errors.js";
+import { type HealthCheck, registerHealthRoutes } from "./health.js";
+import {
+  generateRequestId,
+  type LoggerOverrides,
+  loggerOptions,
+  REQUEST_ID_HEADER,
+} from "./logger.js";
+
+export interface BuildAppOptions {
+  readonly config: ApiConfig;
+  /** Dependency checks for /health/ready (database, Redis, ...). */
+  readonly healthChecks?: readonly HealthCheck[];
+  readonly logger?: LoggerOverrides;
+}
+
+/**
+ * Baseline headers for a JSON API. The API never serves HTML, so the strictest
+ * CSP costs nothing; helmet replaces this in roadmap step 24.
+ */
+export const BASELINE_HEADERS: Readonly<Record<string, string>> = {
+  "x-content-type-options": "nosniff",
+  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+  "referrer-policy": "no-referrer",
+  "cross-origin-resource-policy": "same-origin",
+};
+
+export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
+  const { config } = options;
+  const app = Fastify({
+    logger: loggerOptions(config, options.logger),
+    genReqId: generateRequestId,
+    trustProxy: config.trustProxy,
+    bodyLimit: config.bodyLimitBytes,
+    requestTimeout: config.requestTimeoutMs,
+    // While closing, new requests get 503 so load balancers drain this instance.
+    return503OnClosing: true,
+    routerOptions: { maxParamLength: 200 },
+  });
+
+  app.addHook("onRequest", async (request, reply) => {
+    void reply.header(REQUEST_ID_HEADER, request.id);
+    for (const [name, value] of Object.entries(BASELINE_HEADERS)) void reply.header(name, value);
+    // API responses are per-user data; never let a shared cache keep them.
+    void reply.header("cache-control", "no-store");
+  });
+
+  app.setErrorHandler(errorHandler);
+  app.setNotFoundHandler(notFoundHandler);
+
+  registerHealthRoutes(app, {
+    checks: options.healthChecks ?? [],
+    timeoutMs: config.readinessTimeoutMs,
+  });
+
+  return app;
+}

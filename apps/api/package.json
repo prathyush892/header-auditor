@@ -1,0 +1,26 @@
+{
+  "name": "@header-auditor/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fastify REST API for header-auditor: auth, sites, scan queue.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fastify": "5.12.8",
+    "zod": "4.6.7"
+  }
+}
