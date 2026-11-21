@@ -1,0 +1,193 @@
+// header-auditor data model.
+//
+// Ownership chain: User -> Site -> Scan -> Finding, and Site -> AlertRule.
+// Every child row cascades on delete so removing a user or a site never
+// leaves orphaned scan data behind, and every query the API makes can be
+// scoped by walking up to `Site.ownerId`.
+//
+// Constraints Prisma can't express (CHECKs, case-insensitive email) are
+// appended by hand to the migration SQL; see prisma/migrations/README.md.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+  generatedFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Letter grade from packages/core (`Grade`). F is the floor.
+enum Grade {
+  A
+  B
+  C
+  D
+  F
+}
+
+/// Finding status from packages/core (`Status`).
+enum FindingStatus {
+  PASS
+  WARN
+  FAIL
+  INFO
+}
+
+/// Which part of the engine produced a finding.
+enum FindingCategory {
+  HEADERS
+  TLS
+  CONTENT
+  DNS
+  WELL_KNOWN
+}
+
+enum ScanStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum ScanTrigger {
+  MANUAL
+  SCHEDULED
+}
+
+enum ScanSchedule {
+  NONE
+  DAILY
+  WEEKLY
+}
+
+enum AlertKind {
+  /// Fire when a scan's grade is worse than the previous successful scan.
+  GRADE_DROP
+  /// Fire when the TLS certificate expires within `certExpiryDays`.
+  CERT_EXPIRY
+}
+
+enum AlertChannel {
+  EMAIL
+  WEBHOOK
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  /// Stored lower-cased; a unique index on lower(email) enforces it in SQL.
+  email        String   @unique @db.VarChar(254)
+  /// argon2id encoded hash (algorithm, params and salt are in the string).
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sites Site[]
+
+  @@map("users")
+}
+
+model Site {
+  id                String       @id @default(uuid()) @db.Uuid
+  ownerId           String       @map("owner_id") @db.Uuid
+  /// Display name chosen by the owner.
+  name              String       @db.VarChar(100)
+  /// Normalised origin to scan, e.g. https://example.com (no path, no credentials).
+  url               String       @db.VarChar(2048)
+  /// Random value the owner publishes in a DNS TXT record (roadmap step 17).
+  verificationToken String       @unique @map("verification_token") @db.VarChar(64)
+  verifiedAt        DateTime?    @map("verified_at") @db.Timestamptz(3)
+  schedule          ScanSchedule @default(NONE)
+  /// Hosts treated as first-party by the SRI check (CDNs the owner controls).
+  firstPartyHosts   String[]     @default([]) @map("first_party_hosts")
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner      User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  scans      Scan[]
+  alertRules AlertRule[]
+
+  /// One user can't add the same origin twice; two users can each add it.
+  @@unique([ownerId, url])
+  @@index([ownerId, createdAt])
+  @@map("sites")
+}
+
+model Scan {
+  id            String      @id @default(uuid()) @db.Uuid
+  siteId        String      @map("site_id") @db.Uuid
+  status        ScanStatus  @default(QUEUED)
+  trigger       ScanTrigger @default(MANUAL)
+  /// URL the scan started from and where redirects ended.
+  requestedUrl  String      @map("requested_url") @db.VarChar(2048)
+  finalUrl      String?     @map("final_url") @db.VarChar(2048)
+  httpStatus    Int?        @map("http_status") @db.SmallInt
+  /// 0-100, null until the scan succeeds.
+  score         Int?        @db.SmallInt
+  grade         Grade?
+  /// Version of packages/core that produced the result, for reproducibility.
+  engineVersion String?     @map("engine_version") @db.VarChar(32)
+  /// Full engine output (TLS, DNS, content reports) for the report page.
+  report        Json?
+  /// Short, user-safe failure reason; never a stack trace.
+  error         String?     @db.VarChar(500)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  startedAt     DateTime?   @map("started_at") @db.Timestamptz(3)
+  finishedAt    DateTime?   @map("finished_at") @db.Timestamptz(3)
+
+  site     Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  findings Finding[]
+
+  /// Scan history page: newest first per site, cursor-paginated.
+  @@index([siteId, createdAt(sort: Desc)])
+  /// Worker picks up queued/running scans.
+  @@index([status])
+  @@map("scans")
+}
+
+model Finding {
+  id             String          @id @default(uuid()) @db.Uuid
+  scanId         String          @map("scan_id") @db.Uuid
+  category       FindingCategory
+  /// Check name as the engine reports it, e.g. "Strict-Transport-Security".
+  check          String          @db.VarChar(100)
+  status         FindingStatus
+  detail         String
+  /// Points available / earned (0 <= score <= weight).
+  weight         Int             @db.SmallInt
+  score          Int             @db.SmallInt
+  recommendation String          @default("")
+  /// Order within the report, so findings render exactly as the engine listed them.
+  position       Int             @db.SmallInt
+
+  scan Scan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@unique([scanId, position])
+  /// Diff view: compare the same check across two scans.
+  @@index([scanId, check])
+  @@map("findings")
+}
+
+model AlertRule {
+  id              String       @id @default(uuid()) @db.Uuid
+  siteId          String       @map("site_id") @db.Uuid
+  kind            AlertKind
+  channel         AlertChannel
+  /// Email address or https webhook URL, depending on `channel`.
+  target          String       @db.VarChar(2048)
+  /// Required for CERT_EXPIRY (1-365), must be null otherwise.
+  certExpiryDays  Int?         @map("cert_expiry_days") @db.SmallInt
+  enabled         Boolean      @default(true)
+  lastTriggeredAt DateTime?    @map("last_triggered_at") @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, kind, channel, target])
+  @@index([siteId])
+  @@map("alert_rules")
+}

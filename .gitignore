@@ -14,3 +14,6 @@ coverage/
 *.tsbuildinfo
 .env.*
 !.env.example
+
+# Prisma Client is generated on install (packages/db postinstall)
+packages/db/src/generated/

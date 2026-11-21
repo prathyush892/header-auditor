@@ -4,3 +4,4 @@ coverage
 pnpm-lock.yaml
 cli-python
 docs/devlog
+packages/db/src/generated
