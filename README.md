@@ -72,11 +72,12 @@ cli-python/
     checks.py   # pure functions: headers in, findings out (no network)
     cli.py      # fetching, rendering, argument parsing
   tests/        # unit tests + end-to-end tests against a mock server on 127.0.0.1
+apps/
+  api/          # Fastify REST API: zod config, JSON logs, error envelope, health probes
 packages/
   core/         # TypeScript scan engine (port of the Python checks)
   db/           # Prisma schema + migrations for PostgreSQL, typed client
 spec/parity/    # shared test cases both engines must agree on (status, score, weight)
-apps/           # API, worker and dashboard (coming in later milestones)
 ```
 
 ## Development
