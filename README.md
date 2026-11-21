@@ -73,7 +73,8 @@ cli-python/
     cli.py      # fetching, rendering, argument parsing
   tests/        # unit tests + end-to-end tests against a mock server on 127.0.0.1
 packages/
-  core/         # TypeScript scan engine (port of the Python checks, in progress)
+  core/         # TypeScript scan engine (port of the Python checks)
+  db/           # Prisma schema + migrations for PostgreSQL, typed client
 spec/parity/    # shared test cases both engines must agree on (status, score, weight)
 apps/           # API, worker and dashboard (coming in later milestones)
 ```
@@ -97,6 +98,17 @@ pnpm install
 pnpm check        # eslint (incl. security rules) + prettier + tsc + vitest
 pnpm test:py      # runs the Python suite from the repo root
 ```
+
+Local Postgres and Redis (Docker):
+
+```bash
+cp .env.example .env          # set local passwords; .env is git-ignored
+docker compose up -d --wait   # both bound to 127.0.0.1 only
+pnpm --filter @header-auditor/db migrate:deploy
+```
+
+The db package's own tests don't need Docker: they apply the migrations to
+PGlite (Postgres compiled to WASM) and connect to it over 127.0.0.1.
 
 ## License
 
