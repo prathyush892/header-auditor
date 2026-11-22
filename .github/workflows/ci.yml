@@ -15,8 +15,11 @@ concurrency:
 jobs:
   python:
     name: Python CLI (${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    # ubuntu-latest (26.04) has no Python 3.9 build; 24.04 still does. Revisit
+    # when 3.9 support is dropped from cli-python.
+    runs-on: ubuntu-24.04
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.9", "3.12"]
     defaults:
