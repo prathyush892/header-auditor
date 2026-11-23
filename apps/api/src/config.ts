@@ -136,6 +136,10 @@ const envSchema = z.object({
   AUTH_RATE_LIMIT_WINDOW_SECONDS: integer(10, 86_400).default(900),
   AUTH_RATE_LIMIT_PER_ACCOUNT: integer(1, 1_000).default(10),
   AUTH_RATE_LIMIT_PER_IP: integer(1, 100_000).default(100),
+  // Cap on sites per account, so one user can't fill the database or the scan queue.
+  SITES_MAX_PER_USER: integer(1, 10_000).default(50),
+  // Accept IP literals and localhost as site URLs. Dev/e2e only; refused in production.
+  SITES_ALLOW_PRIVATE_TARGETS: booleanFlag.default(false),
 });
 
 type ParsedEnv = z.infer<typeof envSchema>;
@@ -148,6 +152,9 @@ function crossFieldProblems(env: ParsedEnv): string[] {
   }
   if (env.AUTH_SESSION_IDLE_MINUTES > env.AUTH_SESSION_TTL_HOURS * 60) {
     problems.push("AUTH_SESSION_IDLE_MINUTES: must not exceed AUTH_SESSION_TTL_HOURS");
+  }
+  if (env.NODE_ENV === "production" && env.SITES_ALLOW_PRIVATE_TARGETS) {
+    problems.push("SITES_ALLOW_PRIVATE_TARGETS: must be false in production");
   }
   return problems;
 }
@@ -170,6 +177,13 @@ export interface ApiConfig {
   /** Normalised origins (e.g. "https://app.example.com") trusted for unsafe requests. */
   readonly allowedOrigins: readonly string[];
   readonly auth: AuthConfig;
+  readonly sites: SitesConfig;
+}
+
+export interface SitesConfig {
+  readonly maxPerUser: number;
+  /** Allow IP-literal and localhost site URLs (development and e2e tests only). */
+  readonly allowPrivateTargets: boolean;
 }
 
 export interface AuthConfig {
@@ -239,6 +253,10 @@ export function loadConfig(env: Env = process.env): ApiConfig {
         perAccount: parsed.AUTH_RATE_LIMIT_PER_ACCOUNT,
         perIp: parsed.AUTH_RATE_LIMIT_PER_IP,
       }),
+    }),
+    sites: Object.freeze({
+      maxPerUser: parsed.SITES_MAX_PER_USER,
+      allowPrivateTargets: parsed.SITES_ALLOW_PRIVATE_TARGETS,
     }),
   });
 }

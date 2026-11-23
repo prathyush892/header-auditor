@@ -12,6 +12,7 @@ import { type AuthOptions, registerAuth } from "./auth/plugin.js";
 import type { ApiConfig } from "./config.js";
 import { errorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, registerHealthRoutes } from "./health.js";
+import { registerSiteRoutes, type SitesOptions } from "./sites/routes.js";
 import {
   generateRequestId,
   type LoggerOverrides,
@@ -26,6 +27,8 @@ export interface BuildAppOptions {
   readonly logger?: LoggerOverrides;
   /** Enables /auth/* routes and session/CSRF hooks. Omit for a bare skeleton. */
   readonly auth?: AuthOptions;
+  /** Enables /sites routes. Requires `auth`: every site belongs to a signed-in user. */
+  readonly sites?: SitesOptions;
 }
 
 /**
@@ -41,6 +44,9 @@ export const BASELINE_HEADERS: Readonly<Record<string, string>> = {
 
 export async function buildApp(options: BuildAppOptions): Promise<FastifyInstance> {
   const { config } = options;
+  if (options.sites !== undefined && options.auth === undefined) {
+    throw new TypeError("buildApp: `sites` requires `auth` (sites are owned by signed-in users)");
+  }
   const app = Fastify({
     logger: loggerOptions(config, options.logger),
     genReqId: generateRequestId,
@@ -68,6 +74,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.setNotFoundHandler(notFoundHandler);
 
   if (options.auth !== undefined) await registerAuth(app, config, options.auth);
+  if (options.sites !== undefined) registerSiteRoutes(app, config.sites, options.sites);
 
   registerHealthRoutes(app, {
     checks: options.healthChecks ?? [],

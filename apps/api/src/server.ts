@@ -62,9 +62,12 @@ export async function start(options: StartOptions = {}): Promise<FastifyInstance
   const config = loadConfig(env);
   const app = await buildApp({ ...buildOptions, config });
   if (buildOptions.auth === undefined) {
-    // Until the Postgres store is wired in at startup (roadmap step 14), the
+    // Until the Postgres stores are wired in at startup (roadmap step 15), the
     // caller injects one; without it /auth/* routes are simply not registered.
     app.log.warn("auth disabled: no AuthStore configured, /auth routes are not registered");
+  }
+  if (buildOptions.sites === undefined) {
+    app.log.warn("sites disabled: no SiteStore configured, /sites routes are not registered");
   }
   if (handleSignals) {
     const shutdown = createShutdown(app, {
