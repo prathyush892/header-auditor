@@ -48,7 +48,7 @@ Rules that every step follows:
 
 - [x] 11. `packages/db`: Prisma schema (User, Site, Scan, Finding, AlertRule) + first migration; `docker-compose.yml` with Postgres and Redis
 - [x] 12. `apps/api`: Fastify skeleton, health route, zod-validated config, structured logging, error handler, tests with an in-memory app instance
-- [ ] 13. Auth: email + password with argon2 hashing, httpOnly session cookies, CSRF protection, rate-limited login, with tests
+- [x] 13. Auth: email + password with argon2 hashing, httpOnly session cookies, CSRF protection, rate-limited login, with tests
 - [ ] 14. Sites CRUD endpoints (owner-scoped, authorization tests proving users can't read others' sites)
 - [ ] 15. Scan queue: `POST /sites/:id/scans` enqueues a BullMQ job; `apps/worker` runs `packages/core` and stores results
 - [ ] 16. Scheduled scans (daily/weekly per site) + scan history endpoint with pagination
