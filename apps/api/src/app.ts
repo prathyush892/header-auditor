@@ -8,6 +8,7 @@
  */
 import Fastify, { type FastifyInstance } from "fastify";
 
+import { type AuthOptions, registerAuth } from "./auth/plugin.js";
 import type { ApiConfig } from "./config.js";
 import { errorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, registerHealthRoutes } from "./health.js";
@@ -23,6 +24,8 @@ export interface BuildAppOptions {
   /** Dependency checks for /health/ready (database, Redis, ...). */
   readonly healthChecks?: readonly HealthCheck[];
   readonly logger?: LoggerOverrides;
+  /** Enables /auth/* routes and session/CSRF hooks. Omit for a bare skeleton. */
+  readonly auth?: AuthOptions;
 }
 
 /**
@@ -56,8 +59,15 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     void reply.header("cache-control", "no-store");
   });
 
+  // JSON only. Fastify also parses text/plain by default, and text/plain is a
+  // CORS "simple" content type: a cross-site <form> or fetch can send it
+  // without a preflight. Dropping the parser turns those into 415s.
+  app.removeContentTypeParser("text/plain");
+
   app.setErrorHandler(errorHandler);
   app.setNotFoundHandler(notFoundHandler);
+
+  if (options.auth !== undefined) await registerAuth(app, config, options.auth);
 
   registerHealthRoutes(app, {
     checks: options.healthChecks ?? [],

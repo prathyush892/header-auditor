@@ -1,10 +1,12 @@
 /**
- * @header-auditor/api: Fastify REST API. Later steps add auth, sites and the
- * scan queue on top of this skeleton.
+ * @header-auditor/api: Fastify REST API with session auth. Later steps add
+ * sites and the scan queue.
  */
+export * from "./auth/index.js";
 export { BASELINE_HEADERS, buildApp, type BuildAppOptions } from "./app.js";
 export {
   type ApiConfig,
+  type AuthConfig,
   CONFIG_KEYS,
   ConfigError,
   type Env,
@@ -14,6 +16,7 @@ export {
   type LogLevel,
   NODE_ENVS,
   type NodeEnv,
+  normalizeOrigin,
 } from "./config.js";
 export {
   AppError,

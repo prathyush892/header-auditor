@@ -73,7 +73,7 @@ cli-python/
     cli.py      # fetching, rendering, argument parsing
   tests/        # unit tests + end-to-end tests against a mock server on 127.0.0.1
 apps/
-  api/          # Fastify REST API: zod config, JSON logs, error envelope, health probes
+  api/          # Fastify REST API: config, logging, health probes, session auth (argon2id, CSRF, rate limits)
 packages/
   core/         # TypeScript scan engine (port of the Python checks)
   db/           # Prisma schema + migrations for PostgreSQL, typed client
