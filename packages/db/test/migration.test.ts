@@ -83,7 +83,7 @@ describe("migration files", () => {
     expect(names[0]).toMatch(/_init$/);
   });
 
-  it("creates the five tables", async () => {
+  it("creates the six tables", async () => {
     const { rows } = await db.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' ORDER BY table_name`,
@@ -92,6 +92,7 @@ describe("migration files", () => {
       "alert_rules",
       "findings",
       "scans",
+      "sessions",
       "sites",
       "users",
     ]);
@@ -131,6 +132,7 @@ describe("migration files", () => {
       { conname: "alert_rules_site_id_fkey", confdeltype: "c" },
       { conname: "findings_scan_id_fkey", confdeltype: "c" },
       { conname: "scans_site_id_fkey", confdeltype: "c" },
+      { conname: "sessions_user_id_fkey", confdeltype: "c" },
       { conname: "sites_owner_id_fkey", confdeltype: "c" },
     ]);
   });
@@ -264,6 +266,60 @@ describe("CHECK constraints", () => {
         /alert_rules_site_id_kind_channel_target_key/,
       );
     });
+  });
+});
+
+describe("sessions", () => {
+  const HASH = "0123456789abcdef".repeat(4);
+
+  async function insertSession(
+    userId: string,
+    tokenHash: string,
+    expiresAt = "now() + interval '1 day'",
+  ): Promise<void> {
+    await db.query(
+      `INSERT INTO sessions (id, user_id, token_hash, expires_at)
+       VALUES (gen_random_uuid(), $1, $2, ${expiresAt})`,
+      [userId, tokenHash],
+    );
+  }
+
+  it("is a second migration after init", async () => {
+    const names = await migrationNames();
+    expect(names).toContain("20261122000000_sessions");
+    expect(names.indexOf("20261122000000_sessions")).toBeGreaterThan(0);
+  });
+
+  it("accepts a lower-case hex SHA-256 and enforces uniqueness", async () => {
+    const user = await insertUser();
+    await insertSession(user, HASH);
+    await expect(insertSession(user, HASH)).rejects.toThrow(/sessions_token_hash_key/);
+  });
+
+  it.each([
+    ["upper-case hex", "0123456789ABCDEF".repeat(4)],
+    ["a raw base64url token", "A".repeat(43) + "-".repeat(21)],
+    ["too short", "abc"],
+  ])("rejects a token hash that is %s", async (_label, hash) => {
+    const user = await insertUser();
+    await expect(insertSession(user, hash)).rejects.toThrow(
+      /sessions_token_hash_format_check|value too long/,
+    );
+  });
+
+  it("rejects an expiry that is not after creation", async () => {
+    const user = await insertUser();
+    await expect(
+      insertSession(user, "f".repeat(64), "now() - interval '1 second'"),
+    ).rejects.toThrow(/sessions_expiry_order_check/);
+  });
+
+  it("deleting a user removes their sessions", async () => {
+    const user = await insertUser();
+    await insertSession(user, "e".repeat(64));
+    const before = await count("sessions");
+    await db.query(`DELETE FROM users WHERE id = $1`, [user]);
+    expect(await count("sessions")).toBe(before - 1);
   });
 });
 

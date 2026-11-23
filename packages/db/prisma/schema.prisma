@@ -85,9 +85,35 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  sites Site[]
+  sites    Site[]
+  sessions Session[]
 
   @@map("users")
+}
+
+/// Server-side login session. The browser holds a random token in an
+/// httpOnly cookie; only its SHA-256 is stored, so a leaked database dump
+/// can't be replayed as live sessions.
+model Session {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  /// Lower-case hex SHA-256 of the cookie token.
+  tokenHash  String   @unique @map("token_hash") @db.Char(64)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Updated (at most once a minute) on use; drives the idle timeout.
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  /// Absolute expiry, fixed at login. Idle expiry is enforced by the API.
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+  /// Truncated User-Agent, so a user can recognise their own sessions.
+  userAgent  String?  @map("user_agent") @db.VarChar(255)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// "Log out everywhere" and listing a user's sessions.
+  @@index([userId])
+  /// Pruning expired sessions.
+  @@index([expiresAt])
+  @@map("sessions")
 }
 
 model Site {
