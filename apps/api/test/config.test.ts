@@ -39,6 +39,7 @@ describe("loadConfig", () => {
         sessionIdleMs: 12 * 3_600_000,
         rateLimit: { windowMs: 900_000, perAccount: 10, perIp: 100 },
       },
+      sites: { maxPerUser: 50, allowPrivateTargets: false },
     });
   });
 
@@ -95,7 +96,7 @@ describe("loadConfig", () => {
     ).not.toThrow();
   });
 
-  it("only declares API/AUTH keys plus NODE_ENV and LOG_LEVEL", () => {
+  it("only declares API/AUTH/SITES keys plus NODE_ENV and LOG_LEVEL", () => {
     expect([...CONFIG_KEYS].sort()).toEqual(
       [
         "API_ALLOWED_ORIGINS",
@@ -114,6 +115,8 @@ describe("loadConfig", () => {
         "AUTH_SESSION_TTL_HOURS",
         "LOG_LEVEL",
         "NODE_ENV",
+        "SITES_ALLOW_PRIVATE_TARGETS",
+        "SITES_MAX_PER_USER",
       ].sort(),
     );
   });
@@ -297,6 +300,30 @@ describe("auth and origin settings", () => {
     expect(problems[0]).toMatch(/^API_ALLOWED_ORIGINS: /);
     // Never echo the configured value back.
     if (value.trim().length > 3) expect(problems[0]).not.toContain(value.trim());
+  });
+});
+
+describe("sites settings", () => {
+  it("parses the site cap and the private-target flag", () => {
+    expect(
+      loadConfig({ SITES_MAX_PER_USER: "3", SITES_ALLOW_PRIVATE_TARGETS: "true" }).sites,
+    ).toEqual({ maxPerUser: 3, allowPrivateTargets: true });
+  });
+
+  it("refuses private targets in production", () => {
+    expect(problemsFor({ NODE_ENV: "production", SITES_ALLOW_PRIVATE_TARGETS: "1" })).toEqual([
+      "SITES_ALLOW_PRIVATE_TARGETS: must be false in production",
+    ]);
+  });
+
+  it.each([
+    ["SITES_MAX_PER_USER", "0"],
+    ["SITES_MAX_PER_USER", "10001"],
+    ["SITES_ALLOW_PRIVATE_TARGETS", "maybe"],
+  ])("rejects %s=%s", (key, value) => {
+    const problems = problemsFor({ [key]: value });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.startsWith(`${key}: `)).toBe(true);
   });
 });
 
