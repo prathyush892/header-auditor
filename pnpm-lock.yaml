@@ -42,10 +42,10 @@ importers:
   apps/api:
     dependencies:
       '@fastify/cookie':
-        specifier: ^11.1.5
+        specifier: 11.1.5
         version: 11.1.5
       '@node-rs/argon2':
-        specifier: ^2.2.2
+        specifier: 2.2.2
         version: 2.2.2
       fastify:
         specifier: 5.12.8
