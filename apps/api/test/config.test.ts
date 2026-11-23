@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { CONFIG_KEYS, ConfigError, isBindableHost, loadConfig } from "../src/config.js";
+import {
+  CONFIG_KEYS,
+  ConfigError,
+  isBindableHost,
+  loadConfig,
+  normalizeOrigin,
+} from "../src/config.js";
 
 function problemsFor(env: Record<string, string>): readonly string[] {
   try {
@@ -26,6 +32,13 @@ describe("loadConfig", () => {
       requestTimeoutMs: 30_000,
       shutdownTimeoutMs: 10_000,
       readinessTimeoutMs: 2_000,
+      allowedOrigins: ["http://localhost:3000"],
+      auth: {
+        cookieSecure: true,
+        sessionTtlMs: 7 * 24 * 3_600_000,
+        sessionIdleMs: 12 * 3_600_000,
+        rateLimit: { windowMs: 900_000, perAccount: 10, perIp: 100 },
+      },
     });
   });
 
@@ -82,9 +95,10 @@ describe("loadConfig", () => {
     ).not.toThrow();
   });
 
-  it("only declares API keys plus NODE_ENV and LOG_LEVEL", () => {
+  it("only declares API/AUTH keys plus NODE_ENV and LOG_LEVEL", () => {
     expect([...CONFIG_KEYS].sort()).toEqual(
       [
+        "API_ALLOWED_ORIGINS",
         "API_BODY_LIMIT_BYTES",
         "API_HOST",
         "API_PORT",
@@ -92,6 +106,12 @@ describe("loadConfig", () => {
         "API_REQUEST_TIMEOUT_MS",
         "API_SHUTDOWN_TIMEOUT_MS",
         "API_TRUST_PROXY",
+        "AUTH_COOKIE_SECURE",
+        "AUTH_RATE_LIMIT_PER_ACCOUNT",
+        "AUTH_RATE_LIMIT_PER_IP",
+        "AUTH_RATE_LIMIT_WINDOW_SECONDS",
+        "AUTH_SESSION_IDLE_MINUTES",
+        "AUTH_SESSION_TTL_HOURS",
         "LOG_LEVEL",
         "NODE_ENV",
       ].sort(),
@@ -208,6 +228,95 @@ describe("API_HOST", () => {
     expect(isBindableHost(value)).toBe(false);
     expect(problemsFor({ API_HOST: value })).toEqual([expect.stringMatching(/^API_HOST: /)]);
   });
+});
+
+describe("auth and origin settings", () => {
+  it("parses auth settings into milliseconds", () => {
+    expect(
+      loadConfig({
+        AUTH_COOKIE_SECURE: "false",
+        AUTH_SESSION_TTL_HOURS: "2",
+        AUTH_SESSION_IDLE_MINUTES: "30",
+        AUTH_RATE_LIMIT_WINDOW_SECONDS: "60",
+        AUTH_RATE_LIMIT_PER_ACCOUNT: "3",
+        AUTH_RATE_LIMIT_PER_IP: "20",
+      }).auth,
+    ).toEqual({
+      cookieSecure: false,
+      sessionTtlMs: 7_200_000,
+      sessionIdleMs: 1_800_000,
+      rateLimit: { windowMs: 60_000, perAccount: 3, perIp: 20 },
+    });
+  });
+
+  it("refuses insecure cookies in production", () => {
+    expect(problemsFor({ NODE_ENV: "production", AUTH_COOKIE_SECURE: "false" })).toEqual([
+      "AUTH_COOKIE_SECURE: must be true in production",
+    ]);
+  });
+
+  it("refuses an idle timeout longer than the absolute lifetime", () => {
+    expect(problemsFor({ AUTH_SESSION_TTL_HOURS: "1", AUTH_SESSION_IDLE_MINUTES: "61" })).toEqual([
+      "AUTH_SESSION_IDLE_MINUTES: must not exceed AUTH_SESSION_TTL_HOURS",
+    ]);
+  });
+
+  it.each([
+    ["AUTH_SESSION_TTL_HOURS", "0"],
+    ["AUTH_SESSION_IDLE_MINUTES", "1"],
+    ["AUTH_RATE_LIMIT_PER_ACCOUNT", "0"],
+    ["AUTH_RATE_LIMIT_WINDOW_SECONDS", "abc"],
+    ["AUTH_COOKIE_SECURE", "yes"],
+  ])("rejects %s=%s", (key, value) => {
+    const problems = problemsFor({ [key]: value });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.startsWith(`${key}: `)).toBe(true);
+  });
+
+  it("normalises and de-duplicates allowed origins", () => {
+    expect(
+      loadConfig({
+        API_ALLOWED_ORIGINS:
+          " https://App.Example.com:443 , http://localhost:3000,https://app.example.com ,",
+      }).allowedOrigins,
+    ).toEqual(["https://app.example.com", "http://localhost:3000"]);
+  });
+
+  it.each([
+    "app.example.com",
+    "https://app.example.com/dashboard",
+    "https://app.example.com?x=1",
+    "https://user:pw@app.example.com",
+    "ftp://app.example.com",
+    "javascript:alert(1)",
+    "*",
+    " , ",
+  ])("rejects API_ALLOWED_ORIGINS=%j", (value) => {
+    const problems = problemsFor({ API_ALLOWED_ORIGINS: value });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/^API_ALLOWED_ORIGINS: /);
+    // Never echo the configured value back.
+    if (value.trim().length > 3) expect(problems[0]).not.toContain(value.trim());
+  });
+});
+
+describe("normalizeOrigin", () => {
+  it.each([
+    ["https://a.test", "https://a.test"],
+    ["https://a.test/", "https://a.test"],
+    ["http://A.TEST:80", "http://a.test"],
+    ["http://127.0.0.1:3000", "http://127.0.0.1:3000"],
+    ["http://[::1]:3000", "http://[::1]:3000"],
+  ])("%s -> %s", (input, expected) => {
+    expect(normalizeOrigin(input)).toBe(expected);
+  });
+
+  it.each(["", "a.test", "https://a.test/x", "https://a.test/.", "https://a.test#f", "data:,x"])(
+    "rejects %j",
+    (input) => {
+      expect(normalizeOrigin(input)).toBeUndefined();
+    },
+  );
 });
 
 describe(".env.example", () => {

@@ -1,8 +1,10 @@
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { MemoryAuthStore } from "../src/auth/store.js";
 import { ConfigError } from "../src/config.js";
 import { createShutdown, start } from "../src/server.js";
+import { fastHasher } from "./helpers/auth.js";
 
 describe("start (real socket on 127.0.0.1)", () => {
   let close: (() => Promise<void>) | undefined;
@@ -25,6 +27,31 @@ describe("start (real socket on 127.0.0.1)", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("x-request-id")).toBeTruthy();
     expect(await response.json()).toMatchObject({ status: "ok" });
+  });
+
+  it("round-trips the session cookie over a real HTTP connection", async () => {
+    const app = await start({
+      env: { NODE_ENV: "test", LOG_LEVEL: "silent", API_PORT: "0", AUTH_COOKIE_SECURE: "false" },
+      handleSignals: false,
+      auth: { store: new MemoryAuthStore(), hasher: fastHasher(), pruneIntervalMs: 0 },
+    });
+    close = () => app.close();
+    const address = app.server.address();
+    if (address === null || typeof address === "string") throw new Error("expected a TCP address");
+    const base = `http://127.0.0.1:${String(address.port)}`;
+
+    const registered = await fetch(`${base}/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+      body: JSON.stringify({ email: "socket@example.test", password: "a long enough passphrase" }),
+    });
+    expect(registered.status).toBe(201);
+    const cookie = registered.headers.getSetCookie()[0]?.split(";")[0] ?? "";
+    expect(cookie).toMatch(/^ha_session=/);
+
+    const session = await fetch(`${base}/auth/session`, { headers: { cookie } });
+    expect(session.status).toBe(200);
+    expect(await session.json()).toMatchObject({ user: { email: "socket@example.test" } });
   });
 
   it("refuses to start with invalid config", async () => {
