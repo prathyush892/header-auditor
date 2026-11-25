@@ -170,6 +170,10 @@ describe("Prisma Client against the migrated schema", () => {
           siteId: site.id,
           requestedUrl: site.url,
           createdAt: new Date(base + day * 86_400_000),
+          // History is finished scans; only one may be queued at a time per site.
+          status: "FAILED",
+          error: "connection refused",
+          finishedAt: new Date(base + day * 86_400_000),
         },
       });
     }

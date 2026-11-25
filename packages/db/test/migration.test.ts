@@ -358,3 +358,55 @@ describe("cascading deletes", () => {
     expect(rows).toHaveLength(1);
   });
 });
+
+describe("scan queue migration", () => {
+  let owner: string;
+  beforeAll(async () => {
+    owner = await insertUser();
+  });
+
+  it("comes after the sessions migration", async () => {
+    const names = await migrationNames();
+    expect(names.at(-1)).toBe("20261124000000_scan_queue");
+  });
+
+  it("declares the one-active-scan-per-site partial unique index", async () => {
+    const { rows } = await db.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes WHERE indexname = 'scans_one_active_per_site_key'`,
+    );
+    expect(firstRow(rows).indexdef).toMatch(/UNIQUE INDEX .* \(site_id\) WHERE/);
+  });
+
+  it("allows one queued or running scan per site, and any number of finished ones", async () => {
+    const site = await insertSite(owner, "https://queue-a.example.test");
+    const now = new Date();
+    await insertScan(site);
+    await expect(insertScan(site)).rejects.toThrow("scans_one_active_per_site_key");
+    await expect(insertScan(site, { status: "RUNNING", started_at: now })).rejects.toThrow(
+      "scans_one_active_per_site_key",
+    );
+    await insertScan(site, { status: "FAILED", error: "x", finished_at: now });
+    await insertScan(site, { status: "FAILED", error: "y", finished_at: now });
+    await insertScan(site, {
+      status: "SUCCEEDED",
+      score: 90,
+      grade: "A",
+      started_at: now,
+      finished_at: now,
+    });
+  });
+
+  it("scopes the rule to one site", async () => {
+    const a = await insertSite(owner, "https://queue-b.example.test");
+    const b = await insertSite(owner, "https://queue-c.example.test");
+    await insertScan(a);
+    await expect(insertScan(b)).resolves.toBeTypeOf("string");
+  });
+
+  it("requires started_at on a running scan (the worker's lease token)", async () => {
+    const site = await insertSite(owner, "https://queue-d.example.test");
+    await expect(insertScan(site, { status: "RUNNING" })).rejects.toThrow(
+      "scans_running_has_started_at_check",
+    );
+  });
+});

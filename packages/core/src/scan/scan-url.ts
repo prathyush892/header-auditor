@@ -69,6 +69,11 @@ export interface ScanOptions {
    * body. Default 1 MiB, max 10 MiB.
    */
   maxBodyBytes?: number;
+  /**
+   * Hosts besides the page's own (and its subdomains) that the Subresource
+   * Integrity check treats as first-party, e.g. a CDN the site owner runs.
+   */
+  firstPartyHosts?: readonly string[];
 }
 
 export interface RedirectHop {
@@ -492,6 +497,7 @@ export async function scanUrl(rawUrl: string, options: ScanOptions = {}): Promis
     html: response.body,
     bodyBytes: response.bodyBytes,
     bodyTruncated: response.bodyTruncated,
+    ...(options.firstPartyHosts === undefined ? {} : { firstPartyHosts: options.firstPartyHosts }),
   });
   return Object.freeze({ report, redirects, content });
 }

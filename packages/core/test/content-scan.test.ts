@@ -235,6 +235,14 @@ describe("scanUrl content report", () => {
     expect(requestedPaths).toEqual(["/sri"]);
   });
 
+  it("treats the owner's firstPartyHosts as first-party for SRI", async () => {
+    const { content } = await scanUrl(`${httpsBase}/sri`, {
+      ...local(),
+      firstPartyHosts: ["cdn.test"],
+    });
+    expect(content.subresourceIntegrity).toEqual([]);
+  });
+
   it("fails an https page that loads an http script", async () => {
     const { content } = await scanUrl(`${httpsBase}/mixed`, local());
     expect(content.mixedContent.map((r) => r.url)).toEqual(["http://cdn.test/lib.js"]);

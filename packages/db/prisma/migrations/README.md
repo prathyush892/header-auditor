@@ -11,9 +11,14 @@ same migration:
 
 - `CHECK` constraints mirroring application invariants (score ranges,
   lower-case emails, "a succeeded scan has a grade", ...).
+- Partial indexes, such as `scans_one_active_per_site_key` (one queued or
+  running scan per site).
 
 Prisma Migrate doesn't model CHECK constraints, so it neither generates nor
-drops them; they survive later generated migrations. When changing a column a
+drops them; they survive later generated migrations. Partial indexes are
+different: `prisma migrate dev` may propose dropping an index the schema
+doesn't declare. Delete that line from the generated SQL; the migration
+tests assert the index still exists. When changing a column a
 constraint refers to, update the constraint in the same migration.
 
 ## Rules
