@@ -17,6 +17,7 @@
     "skipLibCheck": true,
     "declaration": true,
     "sourceMap": true,
-    "types": ["node"]
+    "types": ["node"],
+    "customConditions": ["@header-auditor/source"]
   }
 }

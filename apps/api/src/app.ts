@@ -12,6 +12,7 @@ import { type AuthOptions, registerAuth } from "./auth/plugin.js";
 import type { ApiConfig } from "./config.js";
 import { errorHandler, notFoundHandler } from "./errors.js";
 import { type HealthCheck, registerHealthRoutes } from "./health.js";
+import { registerScanRoutes, type ScansOptions } from "./scans/routes.js";
 import { registerSiteRoutes, type SitesOptions } from "./sites/routes.js";
 import {
   generateRequestId,
@@ -29,6 +30,8 @@ export interface BuildAppOptions {
   readonly auth?: AuthOptions;
   /** Enables /sites routes. Requires `auth`: every site belongs to a signed-in user. */
   readonly sites?: SitesOptions;
+  /** Enables /sites/:id/scans routes. Requires `sites`. */
+  readonly scans?: ScansOptions;
 }
 
 /**
@@ -46,6 +49,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const { config } = options;
   if (options.sites !== undefined && options.auth === undefined) {
     throw new TypeError("buildApp: `sites` requires `auth` (sites are owned by signed-in users)");
+  }
+  if (options.scans !== undefined && options.sites === undefined) {
+    throw new TypeError("buildApp: `scans` requires `sites` (scans belong to a site)");
   }
   const app = Fastify({
     logger: loggerOptions(config, options.logger),
@@ -75,6 +81,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   if (options.auth !== undefined) await registerAuth(app, config, options.auth);
   if (options.sites !== undefined) registerSiteRoutes(app, config.sites, options.sites);
+  if (options.scans !== undefined) registerScanRoutes(app, config.scans, options.scans);
 
   registerHealthRoutes(app, {
     checks: options.healthChecks ?? [],

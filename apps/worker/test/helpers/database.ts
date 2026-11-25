@@ -1,0 +1,5 @@
+/** packages/db's PGlite test database (WASM Postgres on 127.0.0.1, migrations applied). */
+export {
+  startTestDatabase,
+  type TestDatabase,
+} from "../../../../packages/db/test/helpers/test-database.js";

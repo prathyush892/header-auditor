@@ -40,6 +40,7 @@ describe("loadConfig", () => {
         rateLimit: { windowMs: 900_000, perAccount: 10, perIp: 100 },
       },
       sites: { maxPerUser: 50, allowPrivateTargets: false },
+      scans: { maxActivePerUser: 5, activeWindowMs: 15 * 60_000 },
     });
   });
 
@@ -96,7 +97,7 @@ describe("loadConfig", () => {
     ).not.toThrow();
   });
 
-  it("only declares API/AUTH/SITES keys plus NODE_ENV and LOG_LEVEL", () => {
+  it("only declares API/AUTH/SITES/SCANS keys plus NODE_ENV and LOG_LEVEL", () => {
     expect([...CONFIG_KEYS].sort()).toEqual(
       [
         "API_ALLOWED_ORIGINS",
@@ -115,10 +116,26 @@ describe("loadConfig", () => {
         "AUTH_SESSION_TTL_HOURS",
         "LOG_LEVEL",
         "NODE_ENV",
+        "SCANS_ACTIVE_WINDOW_MINUTES",
+        "SCANS_MAX_ACTIVE_PER_USER",
         "SITES_ALLOW_PRIVATE_TARGETS",
         "SITES_MAX_PER_USER",
       ].sort(),
     );
+  });
+
+  it("parses the scan limits and rejects out-of-range values", () => {
+    expect(
+      loadConfig({ SCANS_MAX_ACTIVE_PER_USER: "1", SCANS_ACTIVE_WINDOW_MINUTES: "60" }).scans,
+    ).toEqual({ maxActivePerUser: 1, activeWindowMs: 3_600_000 });
+    for (const [key, value] of [
+      ["SCANS_MAX_ACTIVE_PER_USER", "0"],
+      ["SCANS_MAX_ACTIVE_PER_USER", "101"],
+      ["SCANS_ACTIVE_WINDOW_MINUTES", "0"],
+      ["SCANS_ACTIVE_WINDOW_MINUTES", "1441"],
+    ] as const) {
+      expect(() => loadConfig({ [key]: value })).toThrow(key);
+    }
   });
 
   it.each(["0", "1", "65535"])("accepts port %s", (port) => {

@@ -1,8 +1,9 @@
 /**
  * @header-auditor/api: Fastify REST API with session auth and owner-scoped
- * sites. Later steps add the scan queue.
+ * sites, and the producer side of the scan queue.
  */
 export * from "./auth/index.js";
+export * from "./scans/index.js";
 export * from "./sites/index.js";
 export { BASELINE_HEADERS, buildApp, type BuildAppOptions } from "./app.js";
 export {
@@ -18,6 +19,7 @@ export {
   NODE_ENVS,
   type NodeEnv,
   normalizeOrigin,
+  type ScansConfig,
   type SitesConfig,
 } from "./config.js";
 export {

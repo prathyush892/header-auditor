@@ -13,10 +13,11 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "pnpm -r --if-present typecheck",
+    "typecheck": "tsc -p tsconfig.json --noEmit && pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "test:py": "cd cli-python && python -m pytest -q",
-    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test"
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",
+    "build": "pnpm -r --if-present build"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -145,6 +145,11 @@ const patchBody = z
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** Lower-case canonical UUID, as Postgres prints them. */
+export function isUuid(value: string): boolean {
+  return UUID.test(value);
+}
+
 function notFound(): AppError {
   return new AppError(404, "SITE_NOT_FOUND", "Site not found");
 }
@@ -152,7 +157,7 @@ function notFound(): AppError {
 /** A malformed id can't match anything; answer 404 like any other miss. */
 function siteId(request: FastifyRequest): string {
   const id = idParams.parse(request.params).id.toLowerCase();
-  if (!UUID.test(id)) throw notFound();
+  if (!isUuid(id)) throw notFound();
   return id;
 }
 

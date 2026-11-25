@@ -140,6 +140,10 @@ const envSchema = z.object({
   SITES_MAX_PER_USER: integer(1, 10_000).default(50),
   // Accept IP literals and localhost as site URLs. Dev/e2e only; refused in production.
   SITES_ALLOW_PRIVATE_TARGETS: booleanFlag.default(false),
+  // Queued + running scans one account may have at once (the queue is shared).
+  SCANS_MAX_ACTIVE_PER_USER: integer(1, 100).default(5),
+  // After this long, a scan still marked queued/running stops blocking new scans.
+  SCANS_ACTIVE_WINDOW_MINUTES: integer(1, 1_440).default(15),
 });
 
 type ParsedEnv = z.infer<typeof envSchema>;
@@ -178,6 +182,12 @@ export interface ApiConfig {
   readonly allowedOrigins: readonly string[];
   readonly auth: AuthConfig;
   readonly sites: SitesConfig;
+  readonly scans: ScansConfig;
+}
+
+export interface ScansConfig {
+  readonly maxActivePerUser: number;
+  readonly activeWindowMs: number;
 }
 
 export interface SitesConfig {
@@ -257,6 +267,10 @@ export function loadConfig(env: Env = process.env): ApiConfig {
     sites: Object.freeze({
       maxPerUser: parsed.SITES_MAX_PER_USER,
       allowPrivateTargets: parsed.SITES_ALLOW_PRIVATE_TARGETS,
+    }),
+    scans: Object.freeze({
+      maxActivePerUser: parsed.SCANS_MAX_ACTIVE_PER_USER,
+      activeWindowMs: parsed.SCANS_ACTIVE_WINDOW_MINUTES * 60_000,
     }),
   });
 }

@@ -1,0 +1,37 @@
+{
+  "name": "@header-auditor/worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "BullMQ worker that runs @header-auditor/core scans and stores the results in Postgres.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "@header-auditor/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@header-auditor/core": "workspace:*",
+    "@header-auditor/db": "workspace:*",
+    "@header-auditor/queue": "workspace:*",
+    "bullmq": "5.81.5",
+    "pino": "10.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.17",
+    "@electric-sql/pglite-socket": "0.2.20",
+    "@header-auditor/api": "workspace:*",
+    "fastify": "5.12.8"
+  }
+}

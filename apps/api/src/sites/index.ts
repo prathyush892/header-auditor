@@ -9,6 +9,7 @@ export {
   DEFAULT_PAGE_SIZE,
   FIRST_PARTY_HOSTS_MAX,
   generateVerificationToken,
+  isUuid,
   MAX_PAGE_SIZE,
   type PublicSite,
   registerSiteRoutes,
