@@ -37,6 +37,19 @@ jobs:
   typescript:
     name: TypeScript workspace
     runs-on: ubuntu-latest
+    services:
+      # Real Redis for the BullMQ queue tests (apps/worker), on loopback only.
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 127.0.0.1:6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -51,4 +64,5 @@ jobs:
       - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm build
       - run: pnpm audit --audit-level=high
