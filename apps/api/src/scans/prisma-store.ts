@@ -11,6 +11,7 @@ import {
   type CreateScanLimits,
   type FindingRecord,
   type ScanDetail,
+  type ScanCursor,
   type ScanRecord,
   type ScanStatus,
   type ScanStore,
@@ -88,11 +89,19 @@ interface ActiveWhere {
   createdAt: { gt: Date };
 }
 
+interface HistoryWhere {
+  siteId: string;
+  site: { ownerId: string };
+  OR?: [{ createdAt: { lt: Date } }, { createdAt: Date; id: { lt: string } }];
+}
+
 interface ScanDelegate {
+  /** The active-scan check (`take: 1`) and the history page. */
   findMany(args: {
-    where: ActiveWhere & { siteId: string };
+    where: (ActiveWhere & { siteId: string }) | HistoryWhere;
+    orderBy?: [{ createdAt: "desc" }, { id: "desc" }];
+    take: number;
     select: ScanSelect;
-    take: 1;
   }): PromiseLike<ScanRow[]>;
   findFirst(args: {
     where: { id: string; siteId: string; site: { ownerId: string } };
@@ -132,6 +141,7 @@ export interface PrismaScanTransaction {
 
 export interface PrismaScanClient {
   readonly scan: ScanDelegate;
+  readonly site: SiteLookup;
   $transaction<R>(fn: (tx: PrismaScanTransaction) => Promise<R>): Promise<R>;
 }
 
@@ -139,6 +149,24 @@ function activeWhere(now: Date, limits: CreateScanLimits): ActiveWhere {
   return {
     status: { in: [...ACTIVE_STATUSES] },
     createdAt: { gt: new Date(now.getTime() - limits.activeWindowMs) },
+  };
+}
+
+function historyWhere(
+  ownerId: string,
+  siteId: string,
+  after: ScanCursor | undefined,
+): HistoryWhere {
+  const where: HistoryWhere = { siteId, site: { ownerId } };
+  if (after === undefined) return where;
+  // Keyset pagination on (created_at DESC, id DESC), served by the
+  // scans(site_id, created_at DESC) index: rows strictly after the cursor.
+  return {
+    ...where,
+    OR: [
+      { createdAt: { lt: after.createdAt } },
+      { createdAt: after.createdAt, id: { lt: after.id } },
+    ],
   };
 }
 
@@ -196,6 +224,25 @@ export function createPrismaScanStore(
         if (isUniqueViolation(error)) return attempt();
         throw error;
       }
+    },
+
+    async listScans(ownerId, siteId, options) {
+      const { after } = options;
+      // Ownership is part of the query (a join on sites.owner_id), not a
+      // separate check whose result the query trusts.
+      const rows = await client.scan.findMany({
+        where: historyWhere(ownerId, siteId, after),
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: options.limit,
+        select: SCAN_SELECT,
+      });
+      if (rows.length > 0) return rows;
+      // Empty page: "no (more) scans" or "not your site"? Only then ask.
+      const site = await client.site.findFirst({
+        where: { id: siteId, ownerId },
+        select: { id: true, url: true },
+      });
+      return site === null ? null : [];
     },
 
     async findScan(ownerId, siteId, scanId): Promise<ScanDetail | null> {

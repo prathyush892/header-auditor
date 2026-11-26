@@ -2,6 +2,7 @@
  * Scan routes, owner-scoped like /sites.
  *
  *   POST /sites/:id/scans           202 + Location: queue a scan of the site
+ *   GET  /sites/:id/scans           history, newest first, cursor-paginated
  *   GET  /sites/:id/scans/:scanId   status, and once finished the full result
  *
  * The request only records intent (a QUEUED row) and hands the id to the
@@ -15,7 +16,8 @@ import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import type { ScansConfig } from "../config.js";
 import { AppError } from "../errors.js";
-import { isUuid } from "../sites/routes.js";
+import { decodeCursor, encodeCursor } from "../sites/cursor.js";
+import { DEFAULT_PAGE_SIZE, isUuid, MAX_PAGE_SIZE } from "../sites/routes.js";
 import type { ScanQueue } from "./queue.js";
 import {
   ENQUEUE_FAILED_MESSAGE,
@@ -56,6 +58,13 @@ export interface PublicScan {
   readonly createdAt: string;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
+}
+
+export interface ScanPage {
+  /** Summaries only: fetch /sites/:id/scans/:scanId for findings and the report. */
+  readonly items: readonly PublicScan[];
+  /** Pass as `?cursor=` for the next page; null on the last page. */
+  readonly nextCursor: string | null;
 }
 
 export interface PublicScanDetail extends PublicScan {
@@ -100,6 +109,15 @@ export function toPublicScanDetail(scan: ScanDetail): PublicScanDetail {
 
 const siteParams = z.object({ id: z.string() });
 const scanParams = z.object({ id: z.string(), scanId: z.string() });
+const historyQuery = z.strictObject({
+  limit: z.coerce
+    .number()
+    .int("must be an integer")
+    .min(1, "must be at least 1")
+    .max(MAX_PAGE_SIZE, `must be at most ${String(MAX_PAGE_SIZE)}`)
+    .default(DEFAULT_PAGE_SIZE),
+  cursor: z.string().optional(),
+});
 /** POST takes no options yet; reject a body rather than ignore one a client thinks matters. */
 const createBody = z.union([z.undefined(), z.null(), z.strictObject({})]);
 
@@ -168,6 +186,33 @@ export function registerScanRoutes(
     }
     request.log.info({ userId: user.id, siteId, scanId: scan.id }, "scan queued");
     return reply.status(202).header("location", scanLocation(scan)).send(toPublicScan(scan));
+  });
+
+  app.get("/sites/:id/scans", async (request): Promise<ScanPage> => {
+    const { user } = requireAuth(request);
+    const siteId = uuidOr404(siteParams.parse(request.params).id, siteNotFound);
+    const query = historyQuery.parse(request.query);
+    let after;
+    if (query.cursor !== undefined) {
+      after = decodeCursor(query.cursor);
+      if (after === undefined) {
+        throw new AppError(400, "VALIDATION_FAILED", "Request validation failed", {
+          details: [{ path: "cursor", message: "is not a valid cursor" }],
+        });
+      }
+    }
+    // One extra row tells us whether another page exists, without a COUNT.
+    const rows = await store.listScans(user.id, siteId, {
+      limit: query.limit + 1,
+      ...(after === undefined ? {} : { after }),
+    });
+    if (rows === null) throw siteNotFound();
+    const page = rows.slice(0, query.limit);
+    const last = page.at(-1);
+    return {
+      items: page.map(toPublicScan),
+      nextCursor: rows.length > query.limit && last !== undefined ? encodeCursor(last) : null,
+    };
   });
 
   app.get("/sites/:id/scans/:scanId", async (request) => {

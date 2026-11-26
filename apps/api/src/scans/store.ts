@@ -8,7 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import type { SiteStore } from "../sites/store.js";
+import { compareNewestFirst, type SiteStore } from "../sites/store.js";
 
 export const SCAN_STATUSES = ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED"] as const;
 export type ScanStatus = (typeof SCAN_STATUSES)[number];
@@ -73,6 +73,17 @@ export type CreateScanResult =
   /** The user is at `maxActivePerUser`. */
   | { readonly kind: "limit_reached"; readonly limit: number };
 
+/** Position in a site's newest-first history; the next page starts strictly after it. */
+export interface ScanCursor {
+  readonly createdAt: Date;
+  readonly id: string;
+}
+
+export interface ListScansOptions {
+  readonly limit: number;
+  readonly after?: ScanCursor;
+}
+
 export interface ScanStore {
   /**
    * Atomically: confirms the owner owns the site, checks the per-site and
@@ -84,6 +95,16 @@ export interface ScanStore {
     trigger: ScanTrigger,
     limits: CreateScanLimits,
   ): Promise<CreateScanResult>;
+  /**
+   * A site's scans, newest first (ties broken by id, so pages never overlap or
+   * skip rows). Null when the site doesn't exist or belongs to someone else,
+   * so the route can tell "no scans yet" from "not your site".
+   */
+  listScans(
+    ownerId: string,
+    siteId: string,
+    options: ListScansOptions,
+  ): Promise<ScanRecord[] | null>;
   /** Null when the scan, the site, or the ownership doesn't match. */
   findScan(ownerId: string, siteId: string, scanId: string): Promise<ScanDetail | null>;
   /**
@@ -98,6 +119,26 @@ export const STALE_SCAN_MESSAGE = "The scan did not finish in time and was aband
 
 /** User-safe reason stored when Redis refused the job. */
 export const ENQUEUE_FAILED_MESSAGE = "The scan could not be queued. Please try again.";
+
+/** Drops the detail fields, as the history query's narrower select does. */
+function toRecord(scan: ScanDetail): ScanRecord {
+  return {
+    id: scan.id,
+    siteId: scan.siteId,
+    status: scan.status,
+    trigger: scan.trigger,
+    requestedUrl: scan.requestedUrl,
+    finalUrl: scan.finalUrl,
+    httpStatus: scan.httpStatus,
+    score: scan.score,
+    grade: scan.grade,
+    engineVersion: scan.engineVersion,
+    error: scan.error,
+    createdAt: scan.createdAt,
+    startedAt: scan.startedAt,
+    finishedAt: scan.finishedAt,
+  };
+}
 
 function isActive(scan: ScanRecord, now: Date, windowMs: number): boolean {
   return (
@@ -173,6 +214,21 @@ export class MemoryScanStore implements ScanStore {
     this.scans.set(scan.id, scan);
     this.owners.set(scan.id, ownerId);
     return { kind: "created", scan };
+  }
+
+  async listScans(
+    ownerId: string,
+    siteId: string,
+    options: ListScansOptions,
+  ): Promise<ScanRecord[] | null> {
+    if ((await this.sites.findSite(ownerId, siteId)) === null) return null;
+    const { after } = options;
+    return [...this.scans.values()]
+      .filter((scan) => scan.siteId === siteId)
+      .sort(compareNewestFirst)
+      .filter((scan) => after === undefined || compareNewestFirst(after, scan) < 0)
+      .slice(0, options.limit)
+      .map(toRecord);
   }
 
   async findScan(ownerId: string, siteId: string, scanId: string): Promise<ScanDetail | null> {

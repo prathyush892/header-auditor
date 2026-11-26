@@ -200,6 +200,64 @@ describe.each([
     expect(results.filter((r) => r.kind === "created")).toHaveLength(1);
     expect(results.filter((r) => r.kind === "in_progress")).toHaveLength(4);
   });
+
+  /** Creates `count` finished scans of one site; the clock moves `stepMs` between them. */
+  async function history(owner: string, siteId: string, count: number, stepMs: number) {
+    const ids: string[] = [];
+    for (let n = 0; n < count; n += 1) {
+      const scan = created(await fx.scans.createScan(owner, siteId, "MANUAL", LIMITS));
+      await fx.scans.failQueuedScan(scan.id, "done", fx.clock.now());
+      ids.push(scan.id);
+      fx.clock.advance(stepMs);
+    }
+    return ids;
+  }
+
+  it("lists a site's scans newest first and pages with a cursor", async () => {
+    const owner = await newOwner(fx);
+    const site = await newSite(fx, owner);
+    const ids = await history(owner, site.id, 5, 1_000);
+    const first = await fx.scans.listScans(owner, site.id, { limit: 2 });
+    expect(first?.map((s) => s.id)).toEqual([ids[4], ids[3]]);
+    expect(first?.[0]).not.toHaveProperty("findings");
+    const last = first?.at(-1);
+    if (last === undefined) throw new Error("empty page");
+    const second = await fx.scans.listScans(owner, site.id, { limit: 10, after: last });
+    expect(second?.map((s) => s.id)).toEqual([ids[2], ids[1], ids[0]]);
+  });
+
+  it("breaks createdAt ties by id so pages never overlap or skip", async () => {
+    const owner = await newOwner(fx);
+    const site = await newSite(fx, owner);
+    const ids = await history(owner, site.id, 4, 0);
+    const seen: string[] = [];
+    let after: ScanRecord | undefined;
+    for (;;) {
+      const page = await fx.scans.listScans(owner, site.id, {
+        limit: 1,
+        ...(after === undefined ? {} : { after }),
+      });
+      if (page === null || page.length === 0) break;
+      seen.push(...page.map((s) => s.id));
+      after = page.at(-1);
+    }
+    expect(seen).toEqual([...ids].sort().reverse());
+  });
+
+  it("only lists the requested site's scans, and only for its owner", async () => {
+    const alice = await newOwner(fx);
+    const bob = await newOwner(fx);
+    const site = await newSite(fx, alice);
+    const other = await newSite(fx, alice);
+    await history(alice, site.id, 1, 1_000);
+    await history(alice, other.id, 2, 1_000);
+    expect(await fx.scans.listScans(alice, site.id, { limit: 10 })).toHaveLength(1);
+    expect(await fx.scans.listScans(bob, site.id, { limit: 10 })).toBeNull();
+    expect(await fx.scans.listScans(alice, MISSING_ID, { limit: 10 })).toBeNull();
+    // A site with no scans yet is an empty page, not a miss.
+    const fresh = await newSite(fx, alice);
+    expect(await fx.scans.listScans(alice, fresh.id, { limit: 10 })).toEqual([]);
+  });
 });
 
 describe("Prisma store only", () => {
@@ -213,6 +271,7 @@ describe("Prisma store only", () => {
     let hideActive = true;
     const racy: PrismaScanClient = {
       scan: prisma.scan,
+      site: prisma.site,
       $transaction: (fn) =>
         prisma.$transaction((tx) =>
           fn({
