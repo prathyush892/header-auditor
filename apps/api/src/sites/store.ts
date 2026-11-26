@@ -8,6 +8,8 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { isActiveSchedule, nextScanAtForChange } from "../schedules/cadence.js";
+
 export const SCHEDULES = ["NONE", "DAILY", "WEEKLY"] as const;
 export type Schedule = (typeof SCHEDULES)[number];
 
@@ -20,6 +22,8 @@ export interface SiteRecord {
   readonly verificationToken: string;
   readonly verifiedAt: Date | null;
   readonly schedule: Schedule;
+  /** When the scheduler next queues a scan; null exactly when `schedule` is NONE. */
+  readonly nextScanAt: Date | null;
   readonly firstPartyHosts: readonly string[];
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -126,6 +130,7 @@ export class MemorySiteStore implements SiteStore {
       firstPartyHosts: [...site.firstPartyHosts],
       id: randomUUID(),
       verifiedAt: null,
+      nextScanAt: isActiveSchedule(site.schedule) ? at : null,
       createdAt: at,
       updatedAt: at,
     };
@@ -136,14 +141,20 @@ export class MemorySiteStore implements SiteStore {
   updateSite(ownerId: string, id: string, patch: SitePatch): Promise<SiteRecord | null> {
     const site = this.sites.get(id);
     if (site?.ownerId !== ownerId) return Promise.resolve(null);
+    const at = this.now();
+    const nextScanAt =
+      patch.schedule === undefined
+        ? undefined
+        : nextScanAtForChange(site.schedule, patch.schedule, at);
     const updated: SiteRecord = {
       ...site,
       ...(patch.name === undefined ? {} : { name: patch.name }),
       ...(patch.schedule === undefined ? {} : { schedule: patch.schedule }),
+      ...(nextScanAt === undefined ? {} : { nextScanAt }),
       ...(patch.firstPartyHosts === undefined
         ? {}
         : { firstPartyHosts: [...patch.firstPartyHosts] }),
-      updatedAt: this.now(),
+      updatedAt: at,
     };
     this.sites.set(id, updated);
     return Promise.resolve(updated);
@@ -159,6 +170,17 @@ export class MemorySiteStore implements SiteStore {
   markVerified(id: string, at: Date): void {
     const site = this.sites.get(id);
     if (site !== undefined) this.sites.set(id, { ...site, verifiedAt: at });
+  }
+
+  /** Test helper: every site, in insertion order (the scheduler store reads these). */
+  all(): SiteRecord[] {
+    return [...this.sites.values()];
+  }
+
+  /** Test helper: overwrite fields the API never sets directly (e.g. `nextScanAt`). */
+  patchRecord(id: string, fields: Partial<Omit<SiteRecord, "id" | "ownerId">>): void {
+    const site = this.sites.get(id);
+    if (site !== undefined) this.sites.set(id, { ...site, ...fields });
   }
 
   private owned(ownerId: string): SiteRecord[] {

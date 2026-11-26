@@ -9,6 +9,7 @@
  * which a site could change hands or a check could be skipped.
  */
 import { isUniqueViolation } from "../auth/prisma-store.js";
+import { isActiveSchedule } from "../schedules/cadence.js";
 import {
   type ListSitesOptions,
   type NewSite,
@@ -28,6 +29,7 @@ interface SiteRow {
   readonly verificationToken: string;
   readonly verifiedAt: Date | null;
   readonly schedule: Schedule;
+  readonly nextScanAt: Date | null;
   readonly firstPartyHosts: string[];
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -41,6 +43,7 @@ interface SiteSelect {
   verificationToken: true;
   verifiedAt: true;
   schedule: true;
+  nextScanAt: true;
   firstPartyHosts: true;
   createdAt: true;
   updatedAt: true;
@@ -54,6 +57,7 @@ const SITE_SELECT: SiteSelect = {
   verificationToken: true,
   verifiedAt: true,
   schedule: true,
+  nextScanAt: true,
   firstPartyHosts: true,
   createdAt: true,
   updatedAt: true,
@@ -68,7 +72,6 @@ interface SiteListWhere {
 
 interface SiteData {
   name?: string;
-  schedule?: Schedule;
   firstPartyHosts?: string[];
 }
 
@@ -92,10 +95,16 @@ interface SiteDelegate {
       url: string;
       verificationToken: string;
       schedule: Schedule;
+      nextScanAt: Date | null;
       firstPartyHosts: string[];
     };
     select: SiteSelect;
   }): PromiseLike<SiteRow>;
+  /** Only used to change the schedule, and only when it actually changes. */
+  updateMany(args: {
+    where: { id: string; ownerId: string; schedule: { not: Schedule } };
+    data: { schedule: Schedule; nextScanAt: Date | null };
+  }): PromiseLike<{ count: number }>;
   update(args: {
     where: { id: string; ownerId: string };
     data: SiteData;
@@ -111,6 +120,7 @@ export interface PrismaSiteTransaction {
 
 export interface PrismaSiteClient {
   readonly site: SiteDelegate;
+  /** createSite: quota check + insert. updateSite: schedule change + other fields. */
   $transaction<R>(fn: (tx: PrismaSiteTransaction) => Promise<R>): Promise<R>;
 }
 
@@ -139,12 +149,14 @@ function listWhere(ownerId: string, options: ListSitesOptions): SiteListWhere {
 function patchData(patch: SitePatch): SiteData {
   return {
     ...(patch.name === undefined ? {} : { name: patch.name }),
-    ...(patch.schedule === undefined ? {} : { schedule: patch.schedule }),
     ...(patch.firstPartyHosts === undefined ? {} : { firstPartyHosts: [...patch.firstPartyHosts] }),
   };
 }
 
-export function createPrismaSiteStore(client: PrismaSiteClient): SiteStore {
+export function createPrismaSiteStore(
+  client: PrismaSiteClient,
+  now: () => Date = () => new Date(),
+): SiteStore {
   return {
     async listSites(ownerId, options) {
       const rows = await client.site.findMany({
@@ -175,7 +187,11 @@ export function createPrismaSiteStore(client: PrismaSiteClient): SiteStore {
           const count = await tx.site.count({ where: { ownerId: site.ownerId } });
           if (count >= maxSites) throw new SiteLimitError(maxSites);
           const row = await tx.site.create({
-            data: { ...site, firstPartyHosts: [...site.firstPartyHosts] },
+            data: {
+              ...site,
+              firstPartyHosts: [...site.firstPartyHosts],
+              nextScanAt: isActiveSchedule(site.schedule) ? now() : null,
+            },
             select: SITE_SELECT,
           });
           return toRecord(row);
@@ -188,13 +204,26 @@ export function createPrismaSiteStore(client: PrismaSiteClient): SiteStore {
     },
 
     async updateSite(ownerId, id, patch) {
+      const { schedule } = patch;
       try {
-        const row = await client.site.update({
-          where: { id, ownerId },
-          data: patchData(patch),
-          select: SITE_SELECT,
+        return await client.$transaction(async (tx) => {
+          if (schedule !== undefined) {
+            // Conditional on the schedule actually changing, decided by the
+            // database: re-saving the same schedule keeps next_scan_at, and
+            // there is no read-then-write window for the scheduler to race.
+            // (Same rule as nextScanAtForChange.)
+            await tx.site.updateMany({
+              where: { id, ownerId, schedule: { not: schedule } },
+              data: { schedule, nextScanAt: isActiveSchedule(schedule) ? now() : null },
+            });
+          }
+          const row = await tx.site.update({
+            where: { id, ownerId },
+            data: patchData(patch),
+            select: SITE_SELECT,
+          });
+          return toRecord(row);
         });
-        return toRecord(row);
       } catch (error) {
         if (isRecordNotFound(error)) return null;
         throw error;

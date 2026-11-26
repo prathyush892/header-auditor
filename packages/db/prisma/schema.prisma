@@ -127,6 +127,10 @@ model Site {
   verificationToken String       @unique @map("verification_token") @db.VarChar(64)
   verifiedAt        DateTime?    @map("verified_at") @db.Timestamptz(3)
   schedule          ScanSchedule @default(NONE)
+  /// When the scheduler next queues a scan. Null exactly when schedule = NONE
+  /// (CHECK constraint). Advanced with compare-and-set, so two scheduler
+  /// processes can't both claim the same run.
+  nextScanAt        DateTime?    @map("next_scan_at") @db.Timestamptz(3)
   /// Hosts treated as first-party by the SRI check (CDNs the owner controls).
   firstPartyHosts   String[]     @default([]) @map("first_party_hosts")
   createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -139,6 +143,8 @@ model Site {
   /// One user can't add the same origin twice; two users can each add it.
   @@unique([ownerId, url])
   @@index([ownerId, createdAt])
+  /// Scheduler: due sites, oldest due first.
+  @@index([nextScanAt])
   @@map("sites")
 }
 

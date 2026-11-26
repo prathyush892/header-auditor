@@ -17,6 +17,7 @@ import {
   type SiteRecord,
   type SiteStore,
 } from "../src/sites/store.js";
+import { TestClock } from "./helpers/auth.js";
 import { startTestDatabase, type TestDatabase } from "./helpers/database.js";
 
 let testDb: TestDatabase;
@@ -258,5 +259,75 @@ describe("Prisma site store specifics", () => {
     expect(isRecordNotFound({ code: "P2002" })).toBe(false);
     expect(isRecordNotFound(null)).toBe(false);
     expect(isRecordNotFound(new Error("x"))).toBe(false);
+  });
+});
+
+describe.each([
+  ["MemorySiteStore", false, (clock: TestClock): SiteStore => new MemorySiteStore(clock.now)],
+  [
+    "Prisma store (PGlite)",
+    true,
+    (clock: TestClock): SiteStore => createPrismaSiteStore(prisma, clock.now),
+  ],
+])("%s: next_scan_at", (_name, usesDatabase, makeStore) => {
+  const HOUR = 3_600_000;
+  let clock: TestClock;
+  let store: SiteStore;
+  beforeAll(() => {
+    clock = new TestClock();
+    store = makeStore(clock);
+  });
+
+  const owner = (): Promise<string> => newOwner(usesDatabase);
+
+  it("is null without a schedule and 'now' for a site created on one", async () => {
+    const ownerId = await owner();
+    const off = await store.createSite(site(ownerId, 200), 10);
+    expect(off.nextScanAt).toBeNull();
+    const on = await store.createSite(site(ownerId, 201, { schedule: "DAILY" }), 10);
+    expect(on.nextScanAt).toEqual(clock.now());
+  });
+
+  it("is set when a schedule is enabled, kept when re-sent, reset on a switch, cleared on NONE", async () => {
+    const ownerId = await owner();
+    const created = await store.createSite(site(ownerId, 202), 10);
+
+    const enabledAt = clock.now();
+    const enabled = await store.updateSite(ownerId, created.id, { schedule: "DAILY" });
+    expect(enabled?.nextScanAt).toEqual(enabledAt);
+
+    clock.advance(HOUR);
+    // A client re-saving the whole form must not make the site due again.
+    const resent = await store.updateSite(ownerId, created.id, {
+      schedule: "DAILY",
+      name: "Renamed",
+    });
+    expect(resent).toMatchObject({ name: "Renamed", schedule: "DAILY", nextScanAt: enabledAt });
+
+    clock.advance(HOUR);
+    const switched = await store.updateSite(ownerId, created.id, { schedule: "WEEKLY" });
+    expect(switched?.nextScanAt).toEqual(clock.now());
+
+    const off = await store.updateSite(ownerId, created.id, { schedule: "NONE" });
+    expect(off).toMatchObject({ schedule: "NONE", nextScanAt: null });
+    expect(await store.findSite(ownerId, created.id)).toEqual(off);
+  });
+
+  it("bumps updatedAt on a schedule-only change", async () => {
+    const ownerId = await owner();
+    const created = await store.createSite(site(ownerId, 203), 10);
+    // Prisma stamps @updatedAt with its own clock, so move both clocks forward.
+    clock.advance(HOUR);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const updated = await store.updateSite(ownerId, created.id, { schedule: "WEEKLY" });
+    expect(updated?.updatedAt.getTime()).toBeGreaterThan(created.updatedAt.getTime());
+  });
+
+  it("can't change another owner's schedule", async () => {
+    const alice = await owner();
+    const bob = await owner();
+    const created = await store.createSite(site(alice, 204), 10);
+    expect(await store.updateSite(bob, created.id, { schedule: "DAILY" })).toBeNull();
+    expect((await store.findSite(alice, created.id))?.nextScanAt).toBeNull();
   });
 });

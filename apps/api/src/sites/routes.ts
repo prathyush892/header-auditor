@@ -39,6 +39,8 @@ export interface PublicSite {
   readonly name: string;
   readonly url: string;
   readonly schedule: Lowercase<Schedule>;
+  /** When the next scheduled scan is queued; null without a schedule. */
+  readonly nextScanAt: string | null;
   readonly firstPartyHosts: readonly string[];
   readonly verified: boolean;
   readonly verifiedAt: string | null;
@@ -71,6 +73,7 @@ export function toPublicSite(site: SiteRecord): PublicSite {
     name: site.name,
     url: site.url,
     schedule: site.schedule.toLowerCase() as Lowercase<Schedule>,
+    nextScanAt: site.nextScanAt?.toISOString() ?? null,
     firstPartyHosts: [...site.firstPartyHosts],
     verified: site.verifiedAt !== null,
     verifiedAt: site.verifiedAt?.toISOString() ?? null,

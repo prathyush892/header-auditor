@@ -23,13 +23,18 @@ export async function migrationNames(): Promise<string[]> {
     .sort();
 }
 
+/** SQL of one migration folder (a name from `migrationNames()`). */
+export async function readMigration(name: string): Promise<string> {
+  if (!/^\d{14}_[a-z0-9_]+$/.test(name)) throw new Error(`not a migration name: ${name}`);
+  // Path is built from a validated folder name in our own repo, not user input.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
+  return readFile(join(MIGRATIONS_DIR, name, "migration.sql"), "utf8");
+}
+
 export async function applyMigrations(db: PGlite): Promise<string[]> {
   const names = await migrationNames();
   for (const name of names) {
-    // Path is built from a directory listing of our own repo, not user input.
-    // eslint-disable-next-line security/detect-non-literal-fs-filename
-    const sql = await readFile(join(MIGRATIONS_DIR, name, "migration.sql"), "utf8");
-    await db.exec(sql);
+    await db.exec(await readMigration(name));
   }
   return names;
 }

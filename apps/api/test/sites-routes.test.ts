@@ -312,6 +312,7 @@ describe("sites routes", () => {
         name: "My blog",
         url: "https://blog.example.com",
         schedule: "none",
+        nextScanAt: null,
         firstPartyHosts: ["cdn.example.com", "static.example.com"],
         verified: false,
         verifiedAt: null,
@@ -530,6 +531,7 @@ describe("sites routes", () => {
       expect(allowed.statusCode).toBe(200);
       expect(allowed.json()).toMatchObject({
         schedule: "weekly",
+        nextScanAt: expect.any(String) as unknown,
         verified: true,
         verifiedAt: "2026-11-23T12:00:00.000Z",
       });

@@ -18,7 +18,7 @@ import {
   ScanStatus,
   ScanTrigger,
 } from "../src/index.js";
-import { applyMigrations, migrationNames } from "./helpers/test-database.js";
+import { applyMigrations, migrationNames, readMigration } from "./helpers/test-database.js";
 
 let db: PGlite;
 
@@ -367,7 +367,7 @@ describe("scan queue migration", () => {
 
   it("comes after the sessions migration", async () => {
     const names = await migrationNames();
-    expect(names.at(-1)).toBe("20261124000000_scan_queue");
+    expect(names.at(-2)).toBe("20261124000000_scan_queue");
   });
 
   it("declares the one-active-scan-per-site partial unique index", async () => {
@@ -408,5 +408,81 @@ describe("scan queue migration", () => {
     await expect(insertScan(site, { status: "RUNNING" })).rejects.toThrow(
       "scans_running_has_started_at_check",
     );
+  });
+});
+
+describe("scheduled scans migration", () => {
+  let owner: string;
+  beforeAll(async () => {
+    owner = await insertUser();
+  });
+
+  async function setSchedule(
+    siteId: string,
+    schedule: string,
+    nextScanAt: Date | null,
+  ): Promise<void> {
+    await db.query(`UPDATE sites SET schedule = $2, next_scan_at = $3 WHERE id = $1`, [
+      siteId,
+      schedule,
+      nextScanAt,
+    ]);
+  }
+
+  it("is the latest migration, after the scan queue", async () => {
+    const names = await migrationNames();
+    expect(names.at(-1)).toBe("20261125000000_scheduled_scans");
+  });
+
+  it("indexes sites by next_scan_at for the scheduler", async () => {
+    const { rows } = await db.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes WHERE indexname = 'sites_next_scan_at_idx'`,
+    );
+    expect(firstRow(rows).indexdef).toMatch(/\(next_scan_at\)/);
+  });
+
+  it("requires next_scan_at exactly when the site has a schedule", async () => {
+    const site = await insertSite(owner, "https://sched-a.example.test");
+    const at = new Date();
+    await expect(setSchedule(site, "DAILY", null)).rejects.toThrow(
+      "sites_next_scan_at_matches_schedule_check",
+    );
+    await expect(setSchedule(site, "NONE", at)).rejects.toThrow(
+      "sites_next_scan_at_matches_schedule_check",
+    );
+    await setSchedule(site, "DAILY", at);
+    await setSchedule(site, "WEEKLY", at);
+    await setSchedule(site, "NONE", null);
+  });
+
+  it("makes already-scheduled sites due when it is applied", async () => {
+    // Replay the migration's backfill on a database that only has the earlier ones.
+    const fresh = await PGlite.create();
+    try {
+      const names = await migrationNames();
+      for (const name of names.slice(0, -1)) {
+        await fresh.exec(await readMigration(name));
+      }
+      const { rows: users } = await fresh.query<{ id: string }>(
+        `INSERT INTO users (id, email, password_hash, updated_at)
+         VALUES (gen_random_uuid(), 'old@example.test', 'x', now()) RETURNING id`,
+      );
+      await fresh.query(
+        `INSERT INTO sites (id, owner_id, name, url, verification_token, schedule, updated_at)
+         VALUES (gen_random_uuid(), $1, 'Old', 'https://old.example.test', $2, 'WEEKLY', now()),
+                (gen_random_uuid(), $1, 'Off', 'https://off.example.test', $3, 'NONE', now())`,
+        [firstRow(users).id, "b".repeat(64), "c".repeat(64)],
+      );
+      await fresh.exec(await readMigration(names.at(-1) ?? ""));
+      const { rows } = await fresh.query<{ schedule: string; due: boolean }>(
+        `SELECT schedule, next_scan_at IS NOT NULL AS due FROM sites ORDER BY schedule`,
+      );
+      expect(rows).toEqual([
+        { schedule: "NONE", due: false },
+        { schedule: "WEEKLY", due: true },
+      ]);
+    } finally {
+      await fresh.close();
+    }
   });
 });
