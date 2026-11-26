@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "11.1.5",
+    "@header-auditor/core": "workspace:*",
     "@header-auditor/db": "workspace:*",
     "@header-auditor/queue": "workspace:*",
     "@node-rs/argon2": "2.2.2",

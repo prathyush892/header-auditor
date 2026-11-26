@@ -116,6 +116,60 @@ const originList = z.string().transform((value, ctx) => {
   return origins;
 });
 
+/**
+ * A nameserver for `dns.Resolver#setServers`: an IP literal with an optional
+ * port, `[v6]:port` for IPv6 with a port. Hostnames are refused on purpose:
+ * resolving the resolver would need a resolver.
+ */
+export function normalizeDnsServer(value: string): string | undefined {
+  if (value.startsWith("[")) {
+    const close = value.indexOf("]");
+    if (close === -1) return undefined;
+    const ip = value.slice(1, close);
+    const rest = value.slice(close + 1);
+    if (isIP(ip) !== 6) return undefined;
+    if (rest === "") return ip;
+    const port = rest.startsWith(":") ? parsePort(rest.slice(1)) : undefined;
+    return port === undefined ? undefined : `[${ip}]:${String(port)}`;
+  }
+  if (isIP(value) !== 0) return value;
+  const colon = value.lastIndexOf(":");
+  if (colon === -1) return undefined;
+  const ip = value.slice(0, colon);
+  const port = parsePort(value.slice(colon + 1));
+  // Only IPv4 takes a bare ":port"; IPv6 needs brackets to be unambiguous.
+  if (isIP(ip) !== 4 || port === undefined) return undefined;
+  return `${ip}:${String(port)}`;
+}
+
+function parsePort(text: string): number | undefined {
+  if (!/^\d{1,5}$/.test(text)) return undefined;
+  const port = Number(text);
+  return port >= 1 && port <= 65_535 ? port : undefined;
+}
+
+const dnsServerList = z.string().transform((value, ctx) => {
+  const servers: string[] = [];
+  for (const [index, raw] of value.split(",").entries()) {
+    const entry = raw.trim();
+    if (entry === "") continue;
+    const server = normalizeDnsServer(entry);
+    if (server === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: `entry ${String(index + 1)} must be an IP address with an optional port, e.g. 9.9.9.9 or 127.0.0.1:5353`,
+      });
+      return z.NEVER;
+    }
+    if (!servers.includes(server)) servers.push(server);
+  }
+  if (servers.length === 0) {
+    ctx.addIssue({ code: "custom", message: "must list at least one server" });
+    return z.NEVER;
+  }
+  return servers;
+});
+
 const envSchema = z.object({
   NODE_ENV: z.enum(NODE_ENVS).default("development"),
   LOG_LEVEL: z.enum(LOG_LEVELS).default("info"),
@@ -140,6 +194,12 @@ const envSchema = z.object({
   SITES_MAX_PER_USER: integer(1, 10_000).default(50),
   // Accept IP literals and localhost as site URLs. Dev/e2e only; refused in production.
   SITES_ALLOW_PRIVATE_TARGETS: booleanFlag.default(false),
+  // Ownership checks per account per window (each one sends a DNS query).
+  SITES_VERIFY_ATTEMPTS_PER_WINDOW: integer(1, 1_000).default(10),
+  SITES_VERIFY_WINDOW_SECONDS: integer(10, 86_400).default(600),
+  // Nameservers for ownership checks; unset means the system resolver.
+  SITES_VERIFICATION_DNS_SERVERS: dnsServerList.optional(),
+  SITES_VERIFICATION_DNS_TIMEOUT_MS: integer(100, 30_000).default(3_000),
   // Queued + running scans one account may have at once (the queue is shared).
   SCANS_MAX_ACTIVE_PER_USER: integer(1, 100).default(5),
   // After this long, a scan still marked queued/running stops blocking new scans.
@@ -194,6 +254,17 @@ export interface SitesConfig {
   readonly maxPerUser: number;
   /** Allow IP-literal and localhost site URLs (development and e2e tests only). */
   readonly allowPrivateTargets: boolean;
+  readonly verification: VerificationConfig;
+}
+
+export interface VerificationConfig {
+  /** Ownership checks one account may run per window. */
+  readonly attemptsPerWindow: number;
+  readonly windowMs: number;
+  /** Nameservers to query (`ip` or `ip:port`); undefined means the system resolver. */
+  readonly dnsServers: readonly string[] | undefined;
+  /** Per-attempt DNS timeout. */
+  readonly dnsTimeoutMs: number;
 }
 
 export interface AuthConfig {
@@ -267,6 +338,15 @@ export function loadConfig(env: Env = process.env): ApiConfig {
     sites: Object.freeze({
       maxPerUser: parsed.SITES_MAX_PER_USER,
       allowPrivateTargets: parsed.SITES_ALLOW_PRIVATE_TARGETS,
+      verification: Object.freeze({
+        attemptsPerWindow: parsed.SITES_VERIFY_ATTEMPTS_PER_WINDOW,
+        windowMs: parsed.SITES_VERIFY_WINDOW_SECONDS * 1_000,
+        dnsServers:
+          parsed.SITES_VERIFICATION_DNS_SERVERS === undefined
+            ? undefined
+            : Object.freeze([...parsed.SITES_VERIFICATION_DNS_SERVERS]),
+        dnsTimeoutMs: parsed.SITES_VERIFICATION_DNS_TIMEOUT_MS,
+      }),
     }),
     scans: Object.freeze({
       maxActivePerUser: parsed.SCANS_MAX_ACTIVE_PER_USER,

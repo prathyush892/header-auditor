@@ -7,6 +7,7 @@ import {
   ConfigError,
   isBindableHost,
   loadConfig,
+  normalizeDnsServer,
   normalizeOrigin,
 } from "../src/config.js";
 
@@ -39,7 +40,16 @@ describe("loadConfig", () => {
         sessionIdleMs: 12 * 3_600_000,
         rateLimit: { windowMs: 900_000, perAccount: 10, perIp: 100 },
       },
-      sites: { maxPerUser: 50, allowPrivateTargets: false },
+      sites: {
+        maxPerUser: 50,
+        allowPrivateTargets: false,
+        verification: {
+          attemptsPerWindow: 10,
+          windowMs: 600_000,
+          dnsServers: undefined,
+          dnsTimeoutMs: 3_000,
+        },
+      },
       scans: { maxActivePerUser: 5, activeWindowMs: 15 * 60_000 },
     });
   });
@@ -120,8 +130,47 @@ describe("loadConfig", () => {
         "SCANS_MAX_ACTIVE_PER_USER",
         "SITES_ALLOW_PRIVATE_TARGETS",
         "SITES_MAX_PER_USER",
+        "SITES_VERIFICATION_DNS_SERVERS",
+        "SITES_VERIFICATION_DNS_TIMEOUT_MS",
+        "SITES_VERIFY_ATTEMPTS_PER_WINDOW",
+        "SITES_VERIFY_WINDOW_SECONDS",
       ].sort(),
     );
+  });
+
+  it("parses the verification settings", () => {
+    expect(
+      loadConfig({
+        SITES_VERIFY_ATTEMPTS_PER_WINDOW: "3",
+        SITES_VERIFY_WINDOW_SECONDS: "60",
+        SITES_VERIFICATION_DNS_SERVERS:
+          " 9.9.9.9, 127.0.0.1:5353,[2001:db8::1]:53, 2001:db8::2,9.9.9.9",
+        SITES_VERIFICATION_DNS_TIMEOUT_MS: "500",
+      }).sites.verification,
+    ).toEqual({
+      attemptsPerWindow: 3,
+      windowMs: 60_000,
+      dnsServers: ["9.9.9.9", "127.0.0.1:5353", "[2001:db8::1]:53", "2001:db8::2"],
+      dnsTimeoutMs: 500,
+    });
+  });
+
+  it.each([
+    ["SITES_VERIFICATION_DNS_SERVERS", "dns.google"],
+    ["SITES_VERIFICATION_DNS_SERVERS", "9.9.9.9:0"],
+    ["SITES_VERIFICATION_DNS_SERVERS", "9.9.9.9:65536"],
+    ["SITES_VERIFICATION_DNS_SERVERS", "300.1.1.1"],
+    ["SITES_VERIFICATION_DNS_SERVERS", "[9.9.9.9]:53"],
+    ["SITES_VERIFICATION_DNS_SERVERS", "udp://9.9.9.9"],
+    ["SITES_VERIFICATION_DNS_SERVERS", ", ,"],
+    ["SITES_VERIFICATION_DNS_TIMEOUT_MS", "50"],
+    ["SITES_VERIFY_ATTEMPTS_PER_WINDOW", "0"],
+    ["SITES_VERIFY_WINDOW_SECONDS", "5"],
+  ])("rejects %s=%j without echoing it", (key, value) => {
+    const problems = problemsFor({ [key]: value });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.startsWith(`${key}: `)).toBe(true);
+    if (value.trim().replace(/[ ,]/g, "") !== "") expect(problems[0]).not.toContain(value);
   });
 
   it("parses the scan limits and rejects out-of-range values", () => {
@@ -324,7 +373,7 @@ describe("sites settings", () => {
   it("parses the site cap and the private-target flag", () => {
     expect(
       loadConfig({ SITES_MAX_PER_USER: "3", SITES_ALLOW_PRIVATE_TARGETS: "true" }).sites,
-    ).toEqual({ maxPerUser: 3, allowPrivateTargets: true });
+    ).toMatchObject({ maxPerUser: 3, allowPrivateTargets: true });
   });
 
   it("refuses private targets in production", () => {
@@ -359,6 +408,25 @@ describe("normalizeOrigin", () => {
     "rejects %j",
     (input) => {
       expect(normalizeOrigin(input)).toBeUndefined();
+    },
+  );
+});
+
+describe("normalizeDnsServer", () => {
+  it.each([
+    ["1.1.1.1", "1.1.1.1"],
+    ["1.1.1.1:53", "1.1.1.1:53"],
+    ["2001:db8::1", "2001:db8::1"],
+    ["[2001:db8::1]", "2001:db8::1"],
+    ["[2001:db8::1]:5353", "[2001:db8::1]:5353"],
+  ])("accepts %s", (input, expected) => {
+    expect(normalizeDnsServer(input)).toBe(expected);
+  });
+
+  it.each(["", "localhost", "1.1.1", "1.1.1.1:", "1.1.1.1:abc", "[1.1.1.1]", "2001:db8::1:53x"])(
+    "refuses %j",
+    (input) => {
+      expect(normalizeDnsServer(input)).toBeUndefined();
     },
   );
 });

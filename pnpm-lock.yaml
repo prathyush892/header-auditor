@@ -44,6 +44,9 @@ importers:
       '@fastify/cookie':
         specifier: 11.1.5
         version: 11.1.5
+      '@header-auditor/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@header-auditor/db':
         specifier: workspace:*
         version: link:../../packages/db

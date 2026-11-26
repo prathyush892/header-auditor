@@ -6,6 +6,7 @@ export * from "./auth/index.js";
 export * from "./scans/index.js";
 export * from "./schedules/index.js";
 export * from "./sites/index.js";
+export * from "./verification/index.js";
 export { BASELINE_HEADERS, buildApp, type BuildAppOptions } from "./app.js";
 export {
   type ApiConfig,
@@ -19,9 +20,11 @@ export {
   type LogLevel,
   NODE_ENVS,
   type NodeEnv,
+  normalizeDnsServer,
   normalizeOrigin,
   type ScansConfig,
   type SitesConfig,
+  type VerificationConfig,
 } from "./config.js";
 export {
   AppError,
