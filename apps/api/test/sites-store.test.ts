@@ -331,3 +331,74 @@ describe.each([
     expect((await store.findSite(alice, created.id))?.nextScanAt).toBeNull();
   });
 });
+
+describe.each([
+  ["MemorySiteStore", false, (): SiteStore => new MemorySiteStore()],
+  ["Prisma store (PGlite)", true, (): SiteStore => createPrismaSiteStore(prisma)],
+])("recordVerification on %s", (_name, usesDatabase, makeStore) => {
+  let store: SiteStore;
+  beforeAll(() => {
+    store = makeStore();
+  });
+
+  const owner = (): Promise<string> => newOwner(usesDatabase);
+  const FIRST = new Date("2026-11-26T10:00:00.000Z");
+  const LATER = new Date("2026-11-27T10:00:00.000Z");
+
+  it("marks the site verified and keeps the first verification time", async () => {
+    const ownerId = await owner();
+    const created = await store.createSite(site(ownerId, 300), 10);
+    const verified = await store.recordVerification(
+      ownerId,
+      created.id,
+      created.verificationToken,
+      FIRST,
+    );
+    expect(verified).toMatchObject({ id: created.id, verifiedAt: FIRST });
+
+    const again = await store.recordVerification(
+      ownerId,
+      created.id,
+      created.verificationToken,
+      LATER,
+    );
+    expect(again?.verifiedAt).toEqual(FIRST);
+    expect((await store.findSite(ownerId, created.id))?.verifiedAt).toEqual(FIRST);
+  });
+
+  it("does nothing when the token is not the site's current one", async () => {
+    const ownerId = await owner();
+    const created = await store.createSite(site(ownerId, 301), 10);
+    const result = await store.recordVerification(
+      ownerId,
+      created.id,
+      generateVerificationToken(),
+      FIRST,
+    );
+    expect(result).toMatchObject({ id: created.id, verifiedAt: null });
+  });
+
+  it("can't verify another owner's site, and misses return null", async () => {
+    const alice = await owner();
+    const bob = await owner();
+    const created = await store.createSite(site(alice, 302), 10);
+    expect(
+      await store.recordVerification(bob, created.id, created.verificationToken, FIRST),
+    ).toBeNull();
+    expect(
+      await store.recordVerification(alice, MISSING_ID, created.verificationToken, FIRST),
+    ).toBeNull();
+    expect((await store.findSite(alice, created.id))?.verifiedAt).toBeNull();
+  });
+
+  it("lets two concurrent verifications settle on one timestamp", async () => {
+    const ownerId = await owner();
+    const created = await store.createSite(site(ownerId, 303), 10);
+    const [a, b] = await Promise.all([
+      store.recordVerification(ownerId, created.id, created.verificationToken, FIRST),
+      store.recordVerification(ownerId, created.id, created.verificationToken, LATER),
+    ]);
+    expect(a?.verifiedAt).toEqual(b?.verifiedAt);
+    expect([FIRST.getTime(), LATER.getTime()]).toContain(a?.verifiedAt?.getTime());
+  });
+});

@@ -317,6 +317,11 @@ describe("sites routes", () => {
         verified: false,
         verifiedAt: null,
         verificationToken: expect.stringMatching(/^[0-9a-f]{64}$/) as unknown,
+        verificationRecord: {
+          name: "_header-auditor-challenge.blog.example.com",
+          type: "TXT",
+          value: expect.stringMatching(/^header-auditor-verification=[0-9a-f]{64}$/) as unknown,
+        },
         createdAt: expect.any(String) as unknown,
         updatedAt: expect.any(String) as unknown,
       });

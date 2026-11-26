@@ -68,6 +68,8 @@ export async function start(options: StartOptions = {}): Promise<FastifyInstance
   }
   if (buildOptions.sites === undefined) {
     app.log.warn("sites disabled: no SiteStore configured, /sites routes are not registered");
+  } else if (buildOptions.sites.verification === undefined) {
+    app.log.warn("verification disabled: no DomainVerifier configured, sites can't be verified");
   }
   if (handleSignals) {
     const shutdown = createShutdown(app, {

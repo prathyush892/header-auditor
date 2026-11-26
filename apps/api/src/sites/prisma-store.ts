@@ -100,11 +100,18 @@ interface SiteDelegate {
     };
     select: SiteSelect;
   }): PromiseLike<SiteRow>;
-  /** Only used to change the schedule, and only when it actually changes. */
-  updateMany(args: {
-    where: { id: string; ownerId: string; schedule: { not: Schedule } };
-    data: { schedule: Schedule; nextScanAt: Date | null };
-  }): PromiseLike<{ count: number }>;
+  /** Conditional updates: a schedule change, or a first verification. */
+  updateMany(
+    args:
+      | {
+          where: { id: string; ownerId: string; schedule: { not: Schedule } };
+          data: { schedule: Schedule; nextScanAt: Date | null };
+        }
+      | {
+          where: { id: string; ownerId: string; verificationToken: string; verifiedAt: null };
+          data: { verifiedAt: Date };
+        },
+  ): PromiseLike<{ count: number }>;
   update(args: {
     where: { id: string; ownerId: string };
     data: SiteData;
@@ -233,6 +240,18 @@ export function createPrismaSiteStore(
     async deleteSite(ownerId, id) {
       const { count } = await client.site.deleteMany({ where: { id, ownerId } });
       return count > 0;
+    },
+
+    async recordVerification(ownerId, id, token, at) {
+      // One conditional statement: two concurrent checks can't overwrite each
+      // other's timestamp, and a token rotated since the DNS lookup can't be
+      // marked verified with the old record.
+      await client.site.updateMany({
+        where: { id, ownerId, verificationToken: token, verifiedAt: null },
+        data: { verifiedAt: at },
+      });
+      const row = await client.site.findFirst({ where: { id, ownerId }, select: SITE_SELECT });
+      return row === null ? null : toRecord(row);
     },
   };
 }

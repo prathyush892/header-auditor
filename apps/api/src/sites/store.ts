@@ -87,6 +87,18 @@ export interface SiteStore {
   updateSite(ownerId: string, id: string, patch: SitePatch): Promise<SiteRecord | null>;
   /** False when the site doesn't exist or belongs to someone else. */
   deleteSite(ownerId: string, id: string): Promise<boolean>;
+  /**
+   * Marks the site verified at `at`, but only if it still carries `token` (the
+   * one whose DNS record was just checked) and isn't verified already, so the
+   * first verification time is kept. Returns the site as it now is, or null
+   * when it doesn't exist or belongs to someone else.
+   */
+  recordVerification(
+    ownerId: string,
+    id: string,
+    token: string,
+    at: Date,
+  ): Promise<SiteRecord | null>;
 }
 
 /** Newest-first comparison shared by the memory store and the cursor tests. */
@@ -164,6 +176,22 @@ export class MemorySiteStore implements SiteStore {
     if (this.sites.get(id)?.ownerId !== ownerId) return Promise.resolve(false);
     this.sites.delete(id);
     return Promise.resolve(true);
+  }
+
+  recordVerification(
+    ownerId: string,
+    id: string,
+    token: string,
+    at: Date,
+  ): Promise<SiteRecord | null> {
+    const site = this.sites.get(id);
+    if (site?.ownerId !== ownerId) return Promise.resolve(null);
+    if (site.verifiedAt !== null || site.verificationToken !== token) {
+      return Promise.resolve(site);
+    }
+    const updated: SiteRecord = { ...site, verifiedAt: at, updatedAt: this.now() };
+    this.sites.set(id, updated);
+    return Promise.resolve(updated);
   }
 
   /** Test helper: marks a site verified (domain verification arrives in roadmap step 17). */

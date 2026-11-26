@@ -18,6 +18,7 @@ export {
   type SitesOptions,
   toPublicSite,
   VERIFICATION_TOKEN_BYTES,
+  type VerificationOptions,
 } from "./routes.js";
 export {
   compareNewestFirst,
