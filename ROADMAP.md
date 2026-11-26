@@ -52,7 +52,7 @@ Rules that every step follows:
 - [x] 14. Sites CRUD endpoints (owner-scoped, authorization tests proving users can't read others' sites)
 - [x] 15. Scan queue: `POST /sites/:id/scans` enqueues a BullMQ job; `apps/worker` runs `packages/core` and stores results
 - [x] 16. Scheduled scans (daily/weekly per site) + scan history endpoint with pagination
-- [ ] 17. Domain-ownership verification (DNS TXT token) before scheduled scans are allowed
+- [x] 17. Domain-ownership verification (DNS TXT token) before scheduled scans are allowed
 
 ## Milestone 4: Dashboard
 
