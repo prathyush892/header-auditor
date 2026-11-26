@@ -44,15 +44,24 @@ importers:
       '@fastify/cookie':
         specifier: 11.1.5
         version: 11.1.5
+      '@header-auditor/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@header-auditor/queue':
         specifier: workspace:*
         version: link:../../packages/queue
       '@node-rs/argon2':
         specifier: 2.2.2
         version: 2.2.2
+      bullmq:
+        specifier: 5.81.5
+        version: 5.81.5
       fastify:
         specifier: 5.12.8
         version: 5.12.8
+      pino:
+        specifier: 10.4.0
+        version: 10.4.0
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -63,9 +72,6 @@ importers:
       '@electric-sql/pglite-socket':
         specifier: 0.2.20
         version: 0.2.20(@electric-sql/pglite-age@0.0.18(@electric-sql/pglite@0.5.17))(@electric-sql/pglite-pg_hashids@0.0.18(@electric-sql/pglite@0.5.17))(@electric-sql/pglite-pg_ivm@0.0.18(@electric-sql/pglite@0.5.17))(@electric-sql/pglite-pg_textsearch@0.0.19(@electric-sql/pglite@0.5.17))(@electric-sql/pglite-pg_uuidv7@0.0.18(@electric-sql/pglite@0.5.17))(@electric-sql/pglite-pgtap@0.0.18(@electric-sql/pglite@0.5.17))(@electric-sql/pglite-pgvector@0.0.18(@electric-sql/pglite@0.5.17))(@electric-sql/pglite@0.5.17)
-      '@header-auditor/db':
-        specifier: workspace:*
-        version: link:../../packages/db
 
   apps/worker:
     dependencies:

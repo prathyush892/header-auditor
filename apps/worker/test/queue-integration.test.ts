@@ -9,8 +9,10 @@ import {
   createBullScanQueue,
   createPrismaAuthStore,
   createPrismaScanStore,
+  createPrismaScheduleStore,
   createPrismaSiteStore,
   createPasswordHasher,
+  createScheduler,
   loadConfig,
 } from "@header-auditor/api";
 import { createPrismaClient, type PrismaClient } from "@header-auditor/db";
@@ -112,7 +114,7 @@ afterAll(async () => {
 });
 
 function api(
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PATCH",
   url: string,
   payload?: object,
 ): Promise<LightMyRequestResponse> {
@@ -177,6 +179,58 @@ describe("scan pipeline", () => {
 
     // The site is free again once the scan is done.
     expect((await api("POST", `/sites/${siteId}/scans`)).statusCode).toBe(202);
+  });
+
+  it("runs a scheduled scan end to end and lists it in the site's history", async () => {
+    const target = await startHttpSite();
+    try {
+      const created = await api("POST", "/sites", {
+        name: "Scheduled shop",
+        url: `http://127.0.0.1:${String(target.port)}`,
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      const { id: siteId } = created.json<{ id: string }>();
+      // Domain verification is roadmap step 17; mark the site verified directly.
+      await prisma.site.update({ where: { id: siteId }, data: { verifiedAt: new Date() } });
+      const patched = await api("PATCH", `/sites/${siteId}`, { schedule: "daily" });
+      expect(patched.statusCode, patched.body).toBe(200);
+      const due = patched.json<{ nextScanAt: string }>().nextScanAt;
+
+      const scheduler = createScheduler({
+        schedules: createPrismaScheduleStore(prisma),
+        scans: createPrismaScanStore(prisma),
+        queue: createBullScanQueue(queue),
+        limits: { maxActivePerUser: 5, activeWindowMs: 15 * 60_000 },
+        logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
+        batchSize: 10,
+        maxBatchesPerTick: 1,
+        retryDelayMs: 60_000,
+        intervalMs: 60_000,
+      });
+      expect(await scheduler.tick()).toMatchObject({ due: 1, queued: 1 });
+
+      const history = `/sites/${siteId}/scans?limit=1`;
+      const deadline = Date.now() + 15_000;
+      let latest: { trigger: string; status: string } | undefined;
+      do {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        latest = (await api("GET", history)).json<{
+          items: { trigger: string; status: string }[];
+        }>().items[0];
+      } while (
+        (latest?.status === "queued" || latest?.status === "running") &&
+        Date.now() < deadline
+      );
+      expect(latest).toMatchObject({ trigger: "scheduled", status: "succeeded" });
+      expect(target.requests).toContain("/");
+
+      // The next run is exactly one day after the one just claimed.
+      const after = (await api("GET", `/sites/${siteId}`)).json<{ nextScanAt: string }>();
+      expect(Date.parse(after.nextScanAt) - Date.parse(due)).toBe(24 * 3_600_000);
+      expect((await scheduler.tick()).due).toBe(0);
+    } finally {
+      await target.close();
+    }
   });
 
   it("ignores a duplicate job for the same scan (job id = scan id)", async () => {

@@ -4,6 +4,7 @@
  */
 export * from "./auth/index.js";
 export * from "./scans/index.js";
+export * from "./schedules/index.js";
 export * from "./sites/index.js";
 export { BASELINE_HEADERS, buildApp, type BuildAppOptions } from "./app.js";
 export {

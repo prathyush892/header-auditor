@@ -2,7 +2,7 @@
   "name": "@header-auditor/api",
   "version": "0.0.0",
   "private": true,
-  "description": "Fastify REST API for header-auditor: auth, sites, scan queue.",
+  "description": "Fastify REST API for header-auditor: auth, sites, scan queue and the scan scheduler.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,18 +18,21 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start:scheduler": "node dist/schedules/main.js"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.5",
+    "@header-auditor/db": "workspace:*",
     "@header-auditor/queue": "workspace:*",
     "@node-rs/argon2": "2.2.2",
+    "bullmq": "5.81.5",
     "fastify": "5.12.8",
+    "pino": "10.4.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.17",
-    "@electric-sql/pglite-socket": "0.2.20",
-    "@header-auditor/db": "workspace:*"
+    "@electric-sql/pglite-socket": "0.2.20"
   }
 }
