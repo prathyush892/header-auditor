@@ -17,3 +17,7 @@ coverage/
 
 # Prisma Client is generated on install (packages/db postinstall)
 packages/db/src/generated/
+
+# Next.js (apps/web)
+.next/
+apps/web/next-env.d.ts

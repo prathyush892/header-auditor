@@ -50,6 +50,7 @@ jobs:
           --health-retries 10
     env:
       TEST_REDIS_URL: redis://127.0.0.1:6379
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

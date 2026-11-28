@@ -5,3 +5,5 @@ pnpm-lock.yaml
 cli-python
 docs/devlog
 packages/db/src/generated
+apps/web/.next
+apps/web/next-env.d.ts
