@@ -74,6 +74,7 @@ cli-python/
   tests/        # unit tests + end-to-end tests against a mock server on 127.0.0.1
 apps/
   api/          # Fastify REST API: config, logging, health probes, session auth (argon2id, CSRF, rate limits)
+  web/          # Next.js 15 dashboard: sign-in pages, app shell, typed API client (proxies /api/* to the API)
 packages/
   core/         # TypeScript scan engine (port of the Python checks)
   db/           # Prisma schema + migrations for PostgreSQL, typed client
@@ -106,6 +107,14 @@ Local Postgres and Redis (Docker):
 cp .env.example .env          # set local passwords; .env is git-ignored
 docker compose up -d --wait   # both bound to 127.0.0.1 only
 pnpm --filter @header-auditor/db migrate:deploy
+```
+
+Dashboard without Postgres/Redis (in-memory API, data lost on restart):
+
+```bash
+pnpm build
+pnpm --filter @header-auditor/web dev:api   # API on 127.0.0.1:3001
+pnpm --filter @header-auditor/web dev       # open http://localhost:3000
 ```
 
 The db package's own tests don't need Docker: they apply the migrations to

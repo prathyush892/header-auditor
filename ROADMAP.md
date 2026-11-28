@@ -56,7 +56,7 @@ Rules that every step follows:
 
 ## Milestone 4: Dashboard
 
-- [ ] 18. `apps/web`: Next.js app shell, auth pages, typed API client
+- [x] 18. `apps/web`: Next.js app shell, auth pages, typed API client
 - [ ] 19. Sites list + add-site flow with ownership verification instructions
 - [ ] 20. Scan report page: grade badge, findings grouped by severity, fix recommendations with copy-paste config snippets (nginx, Express/helmet, Next.js headers)
 - [ ] 21. Grade history chart and diff view between two scans ("what got worse")
